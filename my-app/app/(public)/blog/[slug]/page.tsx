@@ -26,7 +26,7 @@ export default async function BlogPostPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-white px-6 py-14 dark:bg-zinc-950 sm:py-20">
-      <article className="mx-auto max-w-5xl">
+      <article className="mx-auto max-w-3xl">
         <Link
           href="/blog"
           className="inline-flex items-center gap-2 text-sm font-medium text-zinc-500 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
@@ -35,54 +35,47 @@ export default async function BlogPostPage({ params }: PageProps) {
           Back to Blog
         </Link>
 
-        <div className="mt-10 grid gap-10 sm:grid-cols-[minmax(0,1fr)_280px]">
-          {/* Main content column */}
-          <div>
-            <div className="space-y-5 border-b border-zinc-200 pb-8 dark:border-zinc-800">
-              <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-                <span>{post.category}</span>
-                <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                <span className="inline-flex items-center gap-1.5 normal-case tracking-normal">
-                  <Calendar className="h-3.5 w-3.5" />
-                  {formatDate(post.created_at)}
-                </span>
-              </div>
-
-              <h1 className="font-serif text-3xl font-bold leading-[1.1] tracking-tight text-zinc-950 dark:text-white sm:text-4xl">
-                {post.title}
-              </h1>
-
-              {post.excerpt ? (
-                <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
-                  {post.excerpt}
-                </p>
-              ) : null}
+        {post.featured_image ? (
+          <figure className="mt-8">
+            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900">
+              <Image
+                src={post.featured_image}
+                alt={post.title}
+                width={1200}
+                height={1200}
+                className="object-cover"
+                sizes="(min-width: 768px) 768px, 100vw"
+                priority
+              />
             </div>
+          </figure>
+        ) : null}
 
-            <div
-              className="prose prose-zinc mt-8 max-w-none prose-headings:font-serif prose-headings:font-bold prose-p:leading-relaxed prose-a:text-zinc-950 prose-a:underline prose-a:underline-offset-2 dark:prose-invert dark:prose-a:text-white"
-              dangerouslySetInnerHTML={{ __html: post.content }}
-            />
+        <div className="mt-10 space-y-5 border-b border-zinc-200 pb-8 dark:border-zinc-800">
+          <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+            <span>{post.category}</span>
+            <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+            <span className="inline-flex items-center gap-1.5 normal-case tracking-normal">
+              <Calendar className="h-3.5 w-3.5" />
+              {formatDate(post.created_at)}
+            </span>
           </div>
 
-          {/* Image sidebar column */}
-          {post.featured_image ? (
-            <aside className="sm:sticky sm:top-10 sm:h-fit">
-              <figure>
-                <div className="relative aspect-[4/5] w-full overflow-hidden border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900">
-                  <Image
-                    src={post.featured_image}
-                    alt={post.title}
-                    fill
-                    className="object-cover"
-                    sizes="280px"
-                    priority
-                  />
-                </div>
-              </figure>
-            </aside>
+          <h1 className="font-serif text-3xl font-bold leading-[1.1] tracking-tight text-zinc-950 dark:text-white sm:text-4xl">
+            {post.title}
+          </h1>
+
+          {post.excerpt ? (
+            <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+              {post.excerpt}
+            </p>
           ) : null}
         </div>
+
+        <div
+          className="prose prose-zinc mt-8 max-w-none prose-headings:font-serif prose-headings:font-bold prose-p:leading-relaxed prose-a:text-zinc-950 prose-a:underline prose-a:underline-offset-2 dark:prose-invert dark:prose-a:text-white"
+          dangerouslySetInnerHTML={{ __html: post.content }}
+        />
       </article>
     </main>
   );

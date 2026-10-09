@@ -8,6 +8,7 @@ import { X, Menu, Handshake, Moon, Sun, LogOut, User, Flag } from "lucide-react"
 import { cn } from "@/lib/utils";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { getToken, clearToken } from "@/app/lib/auth-client";
+import Image from "next/image";
 
 interface NavLink {
   href: string;
@@ -133,14 +134,23 @@ export function Navbar() {
 
           {/* Brand Logo */}
           <Link
-            href="/"
-            className="group flex items-center gap-2 text-sm font-semibold tracking-tight text-zinc-950 transition hover:opacity-90 dark:text-zinc-100"
-          >
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-950 text-white shadow-xs dark:bg-white dark:text-zinc-950">
-              <Flag className="h-4 w-4" />
-            </div>
-            <span className="font-bold tracking-tight text-zinc-950 dark:text-zinc-100">Our Nepal</span>
-          </Link>
+  href="/"
+  className="group flex items-center gap-2 text-sm font-semibold tracking-tight text-zinc-950 transition hover:opacity-90 dark:text-zinc-100"
+>
+  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 dark:bg-white">
+    <Image
+      src="/nep.webp"
+      alt="Our Nepal logo"
+      width={16}
+      height={16}
+      className="h-4 w-4"
+    />
+  </div>
+  <span className="font-bold tracking-tight text-zinc-950 dark:text-zinc-100">
+    Our Nepal
+  </span>
+</Link>
+  
 
           {/* Desktop Navigation Links */}
           <div className="hidden items-center gap-1 text-sm sm:flex">
