@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Our Nepal
+
+A modern full-stack web application for stories, culture, travel, and experiences across Nepal. Built with Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, and PostgreSQL.
 
 ## Getting Started
 
-First, run the development server:
+### 1. Database Setup
+
+This project uses PostgreSQL (via Neon in production or Docker Compose locally).
+
+To start a local PostgreSQL database using Docker:
+
+```bash
+docker compose up -d
+```
+
+This will run PostgreSQL on `localhost:5432` with database `ournepal_db`, user `postgres`, and password `postgrespassword`.
+
+Configure your `.env.local`:
+
+```env
+DATABASE_URL=postgresql://postgres:postgrespassword@localhost:5432/ournepal_db
+```
+
+### 2. Environment Variables
+
+Copy `.env.example` to `.env.local` and configure your credentials:
+
+```bash
+cp .env.example .env.local
+```
+
+Required variables:
+- `DATABASE_URL`: PostgreSQL connection string (Neon or local Docker).
+- `JWT_SECRET`: Minimum 32-character secret for signing session tokens.
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: For image uploads.
+
+### 3. Run the Development Server
 
 ```bash
 npm run dev
 # or
-yarn dev
-# or
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Admin Bootstrap
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+To promote a user to `admin`, set `ADMIN_EMAILS` in `.env.local` or run:
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run seed:admin <email>
+```
