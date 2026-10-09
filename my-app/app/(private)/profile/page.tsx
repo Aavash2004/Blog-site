@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getUser, type StoredUser } from "@/app/lib/auth-client";
+import { fetchCurrentUser, type StoredUser } from "@/app/lib/auth-client";
 import { ShieldCheck, Clock, Hash, Pencil } from "lucide-react";
 import {
   Avatar,
@@ -38,7 +38,9 @@ export default function ProfilePage() {
   const [user, setUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
-    setUser(getUser());
+    fetchCurrentUser().then((u) => {
+      if (u) setUser(u);
+    });
   }, []);
 
   return (

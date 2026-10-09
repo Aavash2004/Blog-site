@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
-import { X, Menu, Handshake, Moon, Sun, LogOut, User, Flag } from "lucide-react";
+import { X, Menu, Handshake, Moon, Sun, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BorderBeam } from "@/components/ui/border-beam";
-import { getToken, clearToken } from "@/app/lib/auth-client";
+import { fetchCurrentUser, logout } from "@/app/lib/auth-client";
 import Image from "next/image";
 
 interface NavLink {
@@ -32,7 +32,11 @@ export function Navbar() {
 
   // Theme state
   const { theme, setTheme, resolvedTheme } = useTheme();
-  const [themeMounted, setThemeMounted] = useState(false);
+  const themeMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   // Auth state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -42,29 +46,6 @@ export function Navbar() {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
-
-  // Handle scroll effect
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Close mobile drawer on route change
-  useEffect(() => {
-    closeDrawer();
-  }, [pathname]);
-
-  // Check auth state on mount and whenever the route changes
-  // (so login/logout redirects immediately reflect in the navbar)
-  useEffect(() => {
-    const token = getToken();
-    setIsLoggedIn(!!token);
-    setAuthChecked(true);
-  }, [pathname]);
 
   const openDrawer = () => {
     setMounted(true);
@@ -77,17 +58,41 @@ export function Navbar() {
     window.setTimeout(() => setMounted(false), TRANSITION_MS);
   };
 
-  const handleLogout = () => {
-    clearToken();
+  const handleLogout = async () => {
+    await logout();
     setIsLoggedIn(false);
     closeDrawer();
     router.push("/auth/login");
     router.refresh();
   };
 
+  // Handle scroll effect
   useEffect(() => {
-    setThemeMounted(true);
+    const handleScroll = () => {
+      setScrolled(window.scrollY > 20);
+    };
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  // Close mobile drawer on route change
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    setOpen(false);
+    setVisible(false);
+    setMounted(false);
+  }
+
+  // Check auth state on mount and whenever the route changes
+  // (so login/logout redirects immediately reflect in the navbar)
+  useEffect(() => {
+    fetchCurrentUser().then((user) => {
+      setIsLoggedIn(!!user);
+      setAuthChecked(true);
+    });
+  }, [pathname]);
 
   useEffect(() => {
     if (!mounted) return;

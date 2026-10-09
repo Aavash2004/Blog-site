@@ -150,6 +150,7 @@ export function ensureDb(): Promise<boolean> {
 }
 
 function stripPassword(user: UserRecord): SafeUser {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { password: _password, ...safeUser } = user;
   return safeUser;
 }

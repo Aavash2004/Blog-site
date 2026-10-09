@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Toast, ToastViewport } from "@/components/ui/toast";
 import { EyeIcon, EyeOffIcon, ArrowRight, Handshake } from "lucide-react";
-import { setToken, setUser } from "@/app/lib/auth-client";
+import { setCurrentUser } from "@/app/lib/auth-client";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address."),
@@ -74,14 +74,12 @@ export default function LoginPage() {
         return;
       }
 
-      if (data.token) {
-        setToken(data.token);
-      }
       if (data.user) {
-        setUser(data.user);
+        setCurrentUser(data.user);
       }
       setToast({ message: "Logged in successfully.", type: "success" });
       router.push(data.user?.role === "admin" ? "/admin/dashboard" : "/dashboard");
+      router.refresh();
     } catch {
       setToast({ message: "Unable to reach the server right now.", type: "error" });
       setIsSubmitting(false);

@@ -4,7 +4,7 @@ import { verifyToken } from "@/app/lib/auth-server";
 import { getDashboardStats } from "@/lib/db";
 
 export async function GET(request: Request) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  const payload = verifyToken(request);
 
     if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

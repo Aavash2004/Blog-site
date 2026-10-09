@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  getToken,
-  getUser,
+  fetchCurrentUser,
   type StoredUser,
 } from "@/app/lib/auth-client";
 
@@ -79,16 +78,12 @@ export default function BlogsPage() {
   const [deletePost, setDeletePost] = useState<ApiPost | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  const fetchPosts = async (token: string) => {
+  const fetchPosts = async () => {
     setLoading(true);
     setError("");
 
     try {
-      const res = await fetch("/api/admin/posts", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const res = await fetch("/api/admin/posts");
 
       if (!res.ok) {
         throw new Error("Failed to load posts.");
@@ -113,16 +108,20 @@ export default function BlogsPage() {
   };
 
   useEffect(() => {
-    const token = getToken();
+    fetchCurrentUser().then((u) => {
+      if (!u) {
+        router.replace("/auth/login");
+        return;
+      }
+      if (u.role !== "admin") {
+        router.replace("/dashboard");
+        return;
+      }
 
-    if (!token) {
-      router.replace("/auth/login");
-      return;
-    }
-
-    setUser(getUser());
-    setChecked(true);
-    fetchPosts(token);
+      setUser(u);
+      setChecked(true);
+      fetchPosts();
+    });
   }, [router]);
 
   const filteredPosts = useMemo(() => {
@@ -157,20 +156,13 @@ export default function BlogsPage() {
   const handleDelete = async () => {
     if (!deletePost) return;
 
-    const token = getToken();
-
-    if (!token) return;
-
     setDeleting(true);
 
     try {
       const res = await fetch(
-        `/api/posts/${deletePost.id}`,
+        `/api/admin/posts/${deletePost.id}`,
         {
           method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         }
       );
 

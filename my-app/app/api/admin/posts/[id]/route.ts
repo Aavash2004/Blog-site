@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPostById, updatePost, deletePost, isSlugTaken } from "@/lib/db";
-import { verifyToken } from "@/app/lib/auth-server";
+import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
 import { cleanHtml } from "@/lib/sanitize";
 
@@ -32,7 +32,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    const payload = verifyToken(request.headers.get("authorization"));
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -62,7 +62,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -129,7 +133,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-    const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

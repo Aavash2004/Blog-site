@@ -17,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { Toast, ToastViewport } from "@/components/ui/toast";
 
 import { EyeIcon, EyeOffIcon, ArrowRight, Handshake } from "lucide-react";
-import { setToken, setUser } from "@/app/lib/auth-client";
 const signupSchema = z
   .object({
     name: z

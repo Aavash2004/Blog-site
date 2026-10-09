@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getAllPosts, createPost, isSlugTaken } from "@/lib/db";
-import { verifyToken } from "@/app/lib/auth-server";
+import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
 import { cleanHtml } from "@/lib/sanitize";
 
@@ -22,7 +22,7 @@ const createPostSchema = z.object({
 }),
 });
 export async function GET(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -40,13 +40,16 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  if (payload.role !=="admin"){
-    return NextResponse.json ({error: "Forbidden"},{status:403});
-    
+  if (payload.role !== "admin") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let body: unknown;

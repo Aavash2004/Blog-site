@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { updateUserPassword } from "@/lib/db";
-import { verifyToken } from "@/app/lib/auth-server";
+import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required."),
@@ -12,7 +12,11 @@ const changePasswordSchema = z.object({
 });
 
 export async function PATCH(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

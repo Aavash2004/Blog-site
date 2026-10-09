@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  getToken,
-  getUser,
+  fetchCurrentUser,
   type StoredUser,
 } from "@/app/lib/auth-client";
 
@@ -67,28 +66,14 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const token = getToken();
-
-    if (!token) {
-      router.replace("/auth/login");
-      return;
-    }
-
-    setUser(getUser());
-    setChecked(true);
-
     const fetchData = async () => {
       setLoading(true);
       setError("");
 
       try {
         const [statsRes, activityRes] = await Promise.all([
-          fetch("/api/admin/dashboard/stats", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
-          fetch("/api/admin/dashboard/activity", {
-            headers: { Authorization: `Bearer ${token}` },
-          }),
+          fetch("/api/admin/dashboard/stats"),
+          fetch("/api/admin/dashboard/activity"),
         ]);
 
         if (!statsRes.ok || !activityRes.ok) {
@@ -109,7 +94,20 @@ export default function DashboardPage() {
       }
     };
 
-    fetchData();
+    fetchCurrentUser().then((u) => {
+      if (!u) {
+        router.replace("/auth/login");
+        return;
+      }
+      if (u.role !== "admin") {
+        router.replace("/dashboard");
+        return;
+      }
+
+      setUser(u);
+      setChecked(true);
+      fetchData();
+    });
   }, [router]);
 
   if (!checked) {

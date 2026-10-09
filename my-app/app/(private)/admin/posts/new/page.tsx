@@ -6,7 +6,6 @@ import { ArrowLeft, ImagePlus, Loader2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getToken } from "@/app/lib/auth-client";
 import RichTextEditor from "@/components/admin/RichTextEditor";
 
 export default function NewPostPage() {
@@ -78,7 +77,6 @@ const [imageError, setImageError] = useState("");
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify(payload),
       });
@@ -113,7 +111,6 @@ const [imageError, setImageError] = useState("");
 
     const res = await fetch("/api/posts/upload-image", {
       method: "POST",
-      headers: { Authorization: `Bearer ${getToken()}` },
       body,
     });
 

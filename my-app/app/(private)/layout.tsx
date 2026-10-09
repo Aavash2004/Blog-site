@@ -1,6 +1,6 @@
 "use client";
-import { getToken, getUser, clearToken, clearUser, type StoredUser } from "@/app/lib/auth-client";
-import { useEffect, useState } from "react";
+import { fetchCurrentUser, logout, type StoredUser } from "@/app/lib/auth-client";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { LayoutDashboard, User, Settings, LogOut, Handshake, Menu, X, LucideCamera, CameraIcon } from "lucide-react";
@@ -36,34 +36,33 @@ function getInitials(name?: string | null) {
 export default function PrivateLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [checked, setChecked] = useState(false);
   const [user, setLocalUser] = useState<StoredUser | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { theme, setTheme, resolvedTheme } = useTheme();
-  const [themeMounted, setThemeMounted] = useState(false);
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    setMobileOpen(false);
+  }
 
-  useEffect(() => {
-    setThemeMounted(true);
-  }, []);
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const themeMounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   const privateLinks =
     user?.role === "admin" ? [...baseLinks, ...adminLinks] : baseLinks;
 
-
   useEffect(() => {
-    const token = getToken();
-    if (!token) {
-      router.replace("/auth/login");
-      return;
-    }
-    setLocalUser(getUser());
-    setChecked(true);
+    fetchCurrentUser().then((u) => {
+      if (!u) {
+        router.replace("/auth/login");
+        return;
+      }
+      setLocalUser(u);
+    });
   }, [router]);
-
-  // Close mobile drawer on route change
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
 
   // Lock body scroll while drawer is open
   useEffect(() => {
@@ -74,19 +73,11 @@ export default function PrivateLayout({ children }: { children: React.ReactNode 
     };
   }, [mobileOpen]);
 
-  const handleLogout = () => {
-    clearToken();
-    clearUser();
+  const handleLogout = async () => {
+    await logout();
     router.push("/");
+    router.refresh();
   };
-
-  if (!checked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">Loading...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="relative flex min-h-screen overflow-hidden bg-zinc-50 dark:bg-zinc-950">

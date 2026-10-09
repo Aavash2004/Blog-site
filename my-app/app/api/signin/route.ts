@@ -5,10 +5,30 @@ import {
   findUserByEmailAndPassword,
   logActivity,
 } from "@/lib/db";
+import { verifyCsrf } from "@/app/lib/auth-server";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
+const JWT_SECRET = process.env.JWT_SECRET || "";
+
+function createAuthCookie(token: string) {
+  return {
+    name: "auth_token",
+    value: token,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60, // 7 days
+  };
+}
 
 export async function POST(request: NextRequest) {
+  if (!verifyCsrf(request)) {
+    return NextResponse.json(
+      { error: "Invalid request origin (CSRF check failed)." },
+      { status: 403 }
+    );
+  }
+
   let body: {
     action?: string;
     name?: string;
@@ -71,7 +91,7 @@ export async function POST(request: NextRequest) {
         { expiresIn: "7d" }
       );
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: true,
           user: result.user,
@@ -79,6 +99,9 @@ export async function POST(request: NextRequest) {
         },
         { status: 201 }
       );
+
+      response.cookies.set(createAuthCookie(token));
+      return response;
     } catch (error) {
       console.error("Signup error:", error);
 
@@ -116,7 +139,7 @@ export async function POST(request: NextRequest) {
         { expiresIn: "7d" }
       );
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           success: true,
           user,
@@ -124,6 +147,9 @@ export async function POST(request: NextRequest) {
         },
         { status: 200 }
       );
+
+      response.cookies.set(createAuthCookie(token));
+      return response;
     } catch (error) {
       console.error("Login error:", error);
 
