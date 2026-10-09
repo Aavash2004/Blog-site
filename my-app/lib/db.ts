@@ -218,12 +218,54 @@ export async function findUserByEmailAndPassword(email: string, password: string
   const passwordMatches = await bcrypt.compare(password, user.password);
   if (!passwordMatches) return null;
 
-  if (isAdminEmail(normalizedEmail) && user.role !== "admin") {
-    await query("UPDATE users SET role = 'admin' WHERE id = $1", [user.id]);
-    user.role = "admin";
+  return stripPassword(user);
+}
+
+/**
+ * Promotes an existing user to admin. Does not create accounts or print password hashes.
+ */
+export async function promoteUserToAdmin(email: string) {
+  await ensureDb();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const result = await query("SELECT * FROM users WHERE LOWER(email) = $1", [normalizedEmail]);
+  const user = result.rows[0] as UserRecord | undefined;
+  if (!user) {
+    return {
+      success: false,
+      error: `No registered user found with email "${email}". The user must create an account first.`,
+    } as const;
   }
 
-  return stripPassword(user);
+  if (user.role === "admin") {
+    return {
+      success: true,
+      alreadyAdmin: true,
+      user: stripPassword(user),
+    } as const;
+  }
+
+  const updateResult = await query(
+    `UPDATE users 
+     SET role = 'admin' 
+     WHERE id = $1 
+     RETURNING id, name, email, role, username, phone, address, avatar_url, created_at`,
+    [user.id]
+  );
+
+  const updatedUser = updateResult.rows[0] as SafeUser;
+
+  await logActivity(
+    "ADMIN_PROMOTED",
+    `User ${updatedUser.email} was promoted to admin via CLI seed script`,
+    updatedUser.id
+  );
+
+  return {
+    success: true,
+    alreadyAdmin: false,
+    user: updatedUser,
+  } as const;
 }
 
 /**
@@ -298,21 +340,6 @@ export async function updateUserAvatar(userId: number, avatarUrl: string) {
   return { success: true, user: result.rows[0] as SafeUser } as const;
 }
 
-export async function promoteUserToAdmin(email: string) {
-  await ensureDb();
-  const normalizedEmail = email.trim().toLowerCase();
-
-  const result = await query(
-    "UPDATE users SET role = 'admin' WHERE LOWER(email) = $1 RETURNING id, name, email, role",
-    [normalizedEmail]
-  );
-
-  if (result.rowCount === 0) {
-    return { success: false, error: "User with this email was not found." } as const;
-  }
-
-  return { success: true, user: result.rows[0] } as const;
-}
 
 export interface Post {
   id: number;
