@@ -6,6 +6,12 @@ import {
   logActivity,
 } from "@/lib/db";
 import { verifyCsrf } from "@/app/lib/auth-server";
+import {
+  checkAuthRateLimit,
+  getClientIp,
+  recordAuthFailure,
+  resetAuthRateLimit,
+} from "@/lib/rate-limit";
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
 
@@ -28,6 +34,8 @@ export async function POST(request: NextRequest) {
       { status: 403 }
     );
   }
+
+  const clientIp = getClientIp(request);
 
   let body: {
     action?: string;
@@ -54,6 +62,29 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // ========================================================
+  // PRE-BCRYPT RATE LIMIT CHECK
+  // Checked BEFORE any CPU-intensive password hashing/compare
+  // ========================================================
+  const rateLimit = await checkAuthRateLimit(clientIp, normalizedEmail);
+  if (!rateLimit.allowed) {
+    const retryAfter = rateLimit.retryAfter || 900;
+    return NextResponse.json(
+      {
+        error: "Too many failed attempts. Please try again later.",
+        retryAfter,
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(retryAfter),
+        },
+      }
+    );
+  }
+
   // =========================
   // SIGNUP
   // =========================
@@ -66,14 +97,19 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const result = await createUserRecord(name, email, password);
+      const result = await createUserRecord(name, normalizedEmail, password);
 
       if (!result.success) {
+        // Record failed signup attempt (e.g., duplicate registration attempt)
+        await recordAuthFailure(clientIp, normalizedEmail);
         return NextResponse.json(
           { error: "Email already exists" },
           { status: 409 }
         );
       }
+
+      // Successful signup: reset any previous failed attempts
+      await resetAuthRateLimit(clientIp, normalizedEmail);
 
       await logActivity(
         "USER_REGISTERED",
@@ -117,9 +153,11 @@ export async function POST(request: NextRequest) {
   // =========================
   if (action === "login") {
     try {
-      const user = await findUserByEmailAndPassword(email, password);
+      const user = await findUserByEmailAndPassword(normalizedEmail, password);
 
       if (!user) {
+        // Record failed login attempt
+        await recordAuthFailure(clientIp, normalizedEmail);
         return NextResponse.json(
           {
             success: false,
@@ -128,6 +166,9 @@ export async function POST(request: NextRequest) {
           { status: 401 }
         );
       }
+
+      // Successful login: reset rate limit counters
+      await resetAuthRateLimit(clientIp, normalizedEmail);
 
       const token = jwt.sign(
         {
