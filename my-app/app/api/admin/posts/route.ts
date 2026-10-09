@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getAllPosts, createPost, isSlugTaken } from "@/lib/db";
 import { verifyToken } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
+import { cleanHtml } from "@/lib/sanitize";
 
 const createPostSchema = z.object({
   title: z.string().trim().min(1, "Title is required.").max(255, "Title is too long."),
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
       title: parsed.data.title,
       slug: parsed.data.slug,
       excerpt: parsed.data.excerpt,
-      content: parsed.data.content,
+      content: cleanHtml(parsed.data.content),
       featuredImage: parsed.data.featuredImage || undefined,
       category: parsed.data.category,
       status: parsed.data.status,

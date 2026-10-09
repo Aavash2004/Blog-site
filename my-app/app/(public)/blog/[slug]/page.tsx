@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Calendar } from "lucide-react";
 import { getPostBySlug } from "@/lib/db";
+import { cleanHtml } from "@/lib/sanitize";
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -74,7 +75,7 @@ export default async function BlogPostPage({ params }: PageProps) {
 
         <div
           className="prose prose-zinc mt-8 max-w-none prose-headings:font-serif prose-headings:font-bold prose-p:leading-relaxed prose-a:text-zinc-950 prose-a:underline prose-a:underline-offset-2 dark:prose-invert dark:prose-a:text-white"
-          dangerouslySetInnerHTML={{ __html: post.content }}
+          dangerouslySetInnerHTML={{ __html: cleanHtml(post.content) }}
         />
       </article>
     </main>
