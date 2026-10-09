@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
-import { findUserById, type SafeUser } from "@/lib/db";
+import { getAuthUserFresh, type SafeUser } from "@/lib/db";
 
 const JWT_SECRET = process.env.JWT_SECRET || "";
 
@@ -82,7 +82,7 @@ export async function requireFreshAdmin(
   const payload = verifyToken(request);
   if (!payload) return null;
 
-  const user = await findUserById(payload.userId);
+  const user = await getAuthUserFresh(payload.userId);
   if (!user || user.role !== "admin") {
     return null;
   }

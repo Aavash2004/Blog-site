@@ -226,15 +226,26 @@ export async function findUserByEmailAndPassword(email: string, password: string
   return stripPassword(user);
 }
 
-export async function findUserById(userId: number) {
+/**
+ * Fetches fresh authenticated user record directly from the database.
+ * Single source of truth for authorization freshness and Phase 2 banned checks.
+ */
+export async function getAuthUserFresh(userId: number): Promise<SafeUser | null> {
   await ensureDb();
 
   const result = await query(
     "SELECT id, name, email, role, username, phone, address, avatar_url, created_at FROM users WHERE id = $1",
     [userId]
   );
-  const user = result.rows[0] as SafeUser | undefined;
-  return user || null;
+  const user = (result.rows[0] as SafeUser | undefined) || null;
+  if (!user) return null;
+
+  // Single hook point for Phase 2: if (user.is_banned) return null;
+  return user;
+}
+
+export async function findUserById(userId: number): Promise<SafeUser | null> {
+  return getAuthUserFresh(userId);
 }
 
 export async function updateUserProfile(userId: number, name: string) {

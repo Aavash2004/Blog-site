@@ -48,7 +48,9 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  // Admin routes protection
+  // Admin routes protection: Note that role checks here at the Edge proxy are strictly
+  // for UX redirection. Real database-backed authorization happens in route handlers
+  // via requireFreshAdmin to ensure revoked or demoted roles are never trusted.
   if (pathname.startsWith("/admin")) {
     if (!user) {
       const loginUrl = new URL("/auth/login", request.url);

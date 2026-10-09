@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { findUserById, updateUserProfile, deleteUserAccount } from "@/lib/db";
+import { getAuthUserFresh, updateUserProfile, deleteUserAccount } from "@/lib/db";
 import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 
 const updateProfileSchema = z.object({
@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     return response;
   }
 
-  const user = await findUserById(payload.userId);
+  const user = await getAuthUserFresh(payload.userId);
   if (!user) {
     const response = NextResponse.json({ error: "User not found or account removed." }, { status: 401 });
     response.cookies.delete("auth_token");
