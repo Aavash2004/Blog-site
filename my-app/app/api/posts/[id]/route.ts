@@ -47,6 +47,11 @@ export async function GET(
     if (!post) {
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
+
+    if (post.status === "DRAFT" && post.author_id !== payload.userId && payload.role !== "admin") {
+      return NextResponse.json({ error: "Post not found." }, { status: 404 });
+    }
+
     return NextResponse.json({ post }, { status: 200 });
   } catch (error) {
     console.error("Get post error:", error);
@@ -87,6 +92,13 @@ export async function PATCH(
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
+    if (existing.author_id !== payload.userId && payload.role !== "admin") {
+      return NextResponse.json(
+        { error: "Forbidden: You do not have permission to edit this post." },
+        { status: 403 }
+      );
+    }
+
     if (parsed.data.slug !== existing.slug) {
       const slugExists = await isSlugTaken(parsed.data.slug, id);
       if (slugExists) {
@@ -104,13 +116,13 @@ export async function PATCH(
       status: parsed.data.status,
     });
     if (!updated) {
-  return NextResponse.json({ error: "Post not found." }, { status: 404 });
-}
+      return NextResponse.json({ error: "Post not found." }, { status: 404 });
+    }
     await logActivity(
-  "POST_UPDATED",
-  `Post updated: "${updated.title}"`,
-  payload.userId
-);
+      "POST_UPDATED",
+      `Post updated: "${updated.title}"`,
+      payload.userId
+    );
     return NextResponse.json({ message: "Post updated successfully.", post: updated }, { status: 200 });
   } catch (error) {
     console.error("Update post error:", error);
@@ -139,12 +151,19 @@ export async function DELETE(
       return NextResponse.json({ error: "Post not found." }, { status: 404 });
     }
 
+    if (existing.author_id !== payload.userId && payload.role !== "admin") {
+      return NextResponse.json(
+        { error: "Forbidden: You do not have permission to delete this post." },
+        { status: 403 }
+      );
+    }
+
     await deletePost(id);
-      await logActivity(
-    "POST_DELETED",
-    `Post deleted: "${existing.title}"`,
-    payload.userId
-  );
+    await logActivity(
+      "POST_DELETED",
+      `Post deleted: "${existing.title}"`,
+      payload.userId
+    );
     return NextResponse.json({ message: "Post deleted successfully." }, { status: 200 });
   } catch (error) {
     console.error("Delete post error:", error);
