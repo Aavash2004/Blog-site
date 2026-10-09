@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getPostById, updatePost, deletePost, isSlugTaken } from "@/lib/db";
-import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
+import { requireFreshAdmin, verifyCsrf } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
 import { cleanHtml } from "@/lib/sanitize";
 
@@ -32,12 +32,9 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const payload = verifyToken(request);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const adminSession = await requireFreshAdmin(request);
+  if (!adminSession) {
+    return NextResponse.json({ error: "Forbidden: Admin access required." }, { status: 403 });
   }
 
   const { id: idParam } = await params;
@@ -66,12 +63,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
   }
 
-  const payload = verifyToken(request);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const adminSession = await requireFreshAdmin(request);
+  if (!adminSession) {
+    return NextResponse.json({ error: "Forbidden: Admin access required." }, { status: 403 });
   }
 
   const { id: idParam } = await params;
@@ -118,10 +112,10 @@ export async function PATCH(
   return NextResponse.json({ error: "Post not found." }, { status: 404 });
 }
     await logActivity(
-  "POST_UPDATED",
-  `Post updated: "${updated.title}"`,
-  payload.userId
-);
+      "POST_UPDATED",
+      `Post updated: "${updated.title}"`,
+      adminSession.payload.userId
+    );
     return NextResponse.json({ message: "Post updated successfully.", post: updated }, { status: 200 });
   } catch (error) {
     console.error("Update post error:", error);
@@ -137,12 +131,9 @@ export async function DELETE(
     return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
   }
 
-  const payload = verifyToken(request);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const adminSession = await requireFreshAdmin(request);
+  if (!adminSession) {
+    return NextResponse.json({ error: "Forbidden: Admin access required." }, { status: 403 });
   }
 
   const { id: idParam } = await params;
@@ -158,11 +149,11 @@ export async function DELETE(
     }
 
     await deletePost(id);
-      await logActivity(
-    "POST_DELETED",
-    `Post deleted: "${existing.title}"`,
-    payload.userId
-  );
+    await logActivity(
+      "POST_DELETED",
+      `Post deleted: "${existing.title}"`,
+      adminSession.payload.userId
+    );
     return NextResponse.json({ message: "Post deleted successfully." }, { status: 200 });
   } catch (error) {
     console.error("Delete post error:", error);

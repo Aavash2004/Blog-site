@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
+import { sanitizeRedirect } from "./lib/redirect";
 
 const JWT_SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET || "default_jwt_secret_key_change_in_production"
@@ -36,7 +37,9 @@ export async function proxy(request: NextRequest) {
   // Auth pages (/auth/login, /auth/signup)
   if (pathname.startsWith("/auth/")) {
     if (user) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+      const redirectQuery = request.nextUrl.searchParams.get("redirect");
+      const target = sanitizeRedirect(redirectQuery, "/dashboard");
+      return NextResponse.redirect(new URL(target, request.url));
     }
     const response = NextResponse.next();
     if (isInvalidToken) {
@@ -49,7 +52,7 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/admin")) {
     if (!user) {
       const loginUrl = new URL("/auth/login", request.url);
-      loginUrl.searchParams.set("redirect", pathname);
+      loginUrl.searchParams.set("redirect", sanitizeRedirect(pathname, "/dashboard"));
       const response = NextResponse.redirect(loginUrl);
       if (isInvalidToken) {
         response.cookies.delete("auth_token");
@@ -71,7 +74,7 @@ export async function proxy(request: NextRequest) {
   if (isPrivate) {
     if (!user) {
       const loginUrl = new URL("/auth/login", request.url);
-      loginUrl.searchParams.set("redirect", pathname);
+      loginUrl.searchParams.set("redirect", sanitizeRedirect(pathname, "/dashboard"));
       const response = NextResponse.redirect(loginUrl);
       if (isInvalidToken) {
         response.cookies.delete("auth_token");
@@ -84,8 +87,7 @@ export async function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Next.js convention exports
-export const middleware = proxy;
+// Next.js 16 conventions
 export default proxy;
 
 export const config = {

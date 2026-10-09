@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getAllPosts, createPost, isSlugTaken } from "@/lib/db";
-import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
+import { requireFreshAdmin, verifyCsrf } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
 import { cleanHtml } from "@/lib/sanitize";
 
@@ -22,12 +22,9 @@ const createPostSchema = z.object({
 }),
 });
 export async function GET(request: NextRequest) {
-  const payload = verifyToken(request);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const adminSession = await requireFreshAdmin(request);
+  if (!adminSession) {
+    return NextResponse.json({ error: "Forbidden: Admin access required." }, { status: 403 });
   }
 
   try {
@@ -44,12 +41,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
   }
 
-  const payload = verifyToken(request);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (payload.role !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const adminSession = await requireFreshAdmin(request);
+  if (!adminSession) {
+    return NextResponse.json({ error: "Forbidden: Admin access required." }, { status: 403 });
   }
 
   let body: unknown;
@@ -86,14 +80,14 @@ export async function POST(request: NextRequest) {
       featuredImage: parsed.data.featuredImage || undefined,
       category: parsed.data.category,
       status: parsed.data.status,
-      authorId: payload.userId,
+      authorId: adminSession.payload.userId,
     });
 
     await logActivity(
-  "POST_CREATED",
-  `Post created: "${post.title}"`,
-  payload.userId
-);
+      "POST_CREATED",
+      `Post created: "${post.title}"`,
+      adminSession.payload.userId
+    );
     return NextResponse.json(
       { message: "Post created successfully.", post },
       { status: 201 }

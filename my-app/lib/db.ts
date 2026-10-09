@@ -331,6 +331,15 @@ export async function getPublishedPosts() {
   return result.rows as Post[];
 }
 
+export async function getPostsForUser(authorId: number) {
+  await ensureDb();
+  const result = await query(
+    "SELECT * FROM posts WHERE status = 'PUBLISHED' OR author_id = $1 ORDER BY created_at DESC",
+    [authorId]
+  );
+  return result.rows as Post[];
+}
+
 export async function getPostById(id: number) {
   await ensureDb();
   const result = await query("SELECT * FROM posts WHERE id = $1", [id]);

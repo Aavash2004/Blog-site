@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, Suspense } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,14 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Toast, ToastViewport } from "@/components/ui/toast";
 import { EyeIcon, EyeOffIcon, ArrowRight, Handshake } from "lucide-react";
 import { setCurrentUser } from "@/app/lib/auth-client";
+import { sanitizeRedirect } from "@/lib/redirect";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email address."),
   password: z.string().min(6, "Password must be at least 6 characters."),
 });
 
-export default function LoginPage() {
+function LoginFormContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [form, setForm] = useState({ email: "", password: "" });
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -78,7 +80,11 @@ export default function LoginPage() {
         setCurrentUser(data.user);
       }
       setToast({ message: "Logged in successfully.", type: "success" });
-      router.push(data.user?.role === "admin" ? "/admin/dashboard" : "/dashboard");
+
+      const defaultDest = data.user?.role === "admin" ? "/admin/dashboard" : "/dashboard";
+      const targetUrl = sanitizeRedirect(searchParams.get("redirect"), defaultDest);
+
+      router.push(targetUrl);
       router.refresh();
     } catch {
       setToast({ message: "Unable to reach the server right now.", type: "error" });
@@ -120,54 +126,60 @@ export default function LoginPage() {
                 </label>
                 <Input
                   type="email"
+                  placeholder="you@example.com"
                   value={form.email}
                   onChange={(e) => {
-                    setForm({ ...form, email: e.target.value });
+                    setForm((prev) => ({ ...prev, email: e.target.value }));
                     if (errors.email) validateField("email", e.target.value);
                   }}
-                  onBlur={(e) => validateField("email", e.target.value)}
-                  placeholder="you@example.com"
-                  disabled={isSubmitting}
-                  className="rounded-xl border-zinc-200 bg-white text-zinc-900 placeholder:text-zinc-400 focus-visible:border-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus-visible:border-zinc-500 dark:focus-visible:ring-zinc-500/20"
+                  onBlur={() => validateField("email", form.email)}
+                  className="rounded-xl border-zinc-200 bg-white px-4 py-2.5 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                  required
                 />
-                {errors.email ? <p className="mt-1 text-xs text-red-500 dark:text-red-400">{errors.email}</p> : null}
+                {errors.email ? (
+                  <p className="mt-1 text-xs text-red-500">{errors.email}</p>
+                ) : null}
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
-                    Password
-                  </label>
-                </div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
+                  Password
+                </label>
                 <div className="relative">
                   <Input
                     type={showPassword ? "text" : "password"}
+                    placeholder="••••••••"
                     value={form.password}
                     onChange={(e) => {
-                      setForm({ ...form, password: e.target.value });
+                      setForm((prev) => ({ ...prev, password: e.target.value }));
                       if (errors.password) validateField("password", e.target.value);
                     }}
-                    onBlur={(e) => validateField("password", e.target.value)}
-                    placeholder="password"
-                    className="pr-10 rounded-xl border-zinc-200 bg-white text-zinc-900 placeholder:text-zinc-400 focus-visible:border-zinc-900 focus-visible:ring-2 focus-visible:ring-zinc-900/10 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus-visible:border-zinc-500 dark:focus-visible:ring-zinc-500/20"
-                    disabled={isSubmitting}
+                    onBlur={() => validateField("password", form.password)}
+                    className="rounded-xl border-zinc-200 bg-white px-4 py-2.5 pr-10 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+                    required
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-zinc-400 transition hover:text-zinc-700 dark:text-zinc-500 dark:hover:text-zinc-200 cursor-pointer"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                     aria-label={showPassword ? "Hide password" : "Show password"}
                   >
-                    {showPassword ? <EyeIcon className="h-4 w-4" /> : <EyeOffIcon className="h-4 w-4" />}
+                    {showPassword ? (
+                      <EyeOffIcon className="h-4 w-4" />
+                    ) : (
+                      <EyeIcon className="h-4 w-4" />
+                    )}
                   </button>
                 </div>
-                {errors.password ? <p className="mt-1 text-xs text-red-500 dark:text-red-400">{errors.password}</p> : null}
+                {errors.password ? (
+                  <p className="mt-1 text-xs text-red-500">{errors.password}</p>
+                ) : null}
               </div>
 
               <Button
                 type="submit"
-                className="w-full rounded-full bg-zinc-950 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 cursor-pointer mt-2 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
                 disabled={isSubmitting}
+                className="w-full rounded-xl bg-zinc-950 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800 disabled:opacity-50 dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-200"
               >
                 {isSubmitting ? (
                   "Logging in..."
@@ -196,5 +208,13 @@ export default function LoginPage() {
         </ToastViewport>
       ) : null}
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginFormContent />
+    </Suspense>
   );
 }

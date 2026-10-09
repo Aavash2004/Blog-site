@@ -10,12 +10,16 @@ const updateProfileSchema = z.object({
 export async function GET(request: NextRequest) {
   const payload = verifyToken(request);
   if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const response = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    response.cookies.delete("auth_token");
+    return response;
   }
 
   const user = await findUserById(payload.userId);
   if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const response = NextResponse.json({ error: "User not found or account removed." }, { status: 401 });
+    response.cookies.delete("auth_token");
+    return response;
   }
 
   return NextResponse.json({ success: true, user }, { status: 200 });

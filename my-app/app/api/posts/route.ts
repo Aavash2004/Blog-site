@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAllPosts, createPost, isSlugTaken } from "@/lib/db";
+import { getAllPosts, getPublishedPosts, getPostsForUser, createPost, isSlugTaken } from "@/lib/db";
 import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
 import { cleanHtml } from "@/lib/sanitize";
@@ -24,12 +24,19 @@ const createPostSchema = z.object({
 
 export async function GET(request: NextRequest) {
   const payload = verifyToken(request);
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
 
   try {
-    const posts = await getAllPosts();
+    if (!payload) {
+      const posts = await getPublishedPosts();
+      return NextResponse.json({ posts }, { status: 200 });
+    }
+
+    if (payload.role === "admin") {
+      const posts = await getAllPosts();
+      return NextResponse.json({ posts }, { status: 200 });
+    }
+
+    const posts = await getPostsForUser(payload.userId);
     return NextResponse.json({ posts }, { status: 200 });
   } catch (error) {
     console.error("Get posts error:", error);
