@@ -35,6 +35,7 @@ export default function Home() {
           poster="/images/clouds-poster.jpg"
           className="absolute inset-0 h-full w-full object-cover scale-[1.01] motion-reduce:hidden"
         >
+          <source src="https://res.cloudinary.com/gvucudir/video/upload/v1791791690/our-nepal/clouds_hero.mp4" type="video/mp4" />
           <source src="/images/clouds.mp4" type="video/mp4" />
           Your browser does not support the video tag.
         </video>
