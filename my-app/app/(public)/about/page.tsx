@@ -100,12 +100,7 @@ function Carousel() {
 }
 export default function AboutPage() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-zinc-50/50 px-6 py-12 text-zinc-900 dark:bg-zinc-950/50 dark:text-zinc-100 sm:py-20">
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-[-5rem] top-0 h-64 w-64 rounded-full bg-pink-300/40 blur-3xl" />
-        <div className="absolute right-[-4rem] top-24 h-72 w-72 rounded-full bg-cyan-300/35 blur-3xl" />
-        <div className="absolute bottom-[-3rem] left-1/4 h-60 w-60 rounded-full bg-violet-300/35 blur-3xl" />
-      </div>
+    <main className="relative min-h-screen bg-transparent px-6 py-12 text-zinc-900 dark:text-zinc-100 sm:py-20">
       <div className="mx-auto max-w-5xl space-y-16">
         {/* Header */}
         <div className="space-y-4">

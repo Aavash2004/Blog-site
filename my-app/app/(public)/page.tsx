@@ -2,194 +2,281 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Zap, Handshake, Sun, Cloud, CloudRain, Clock, Utensils, Camera } from "lucide-react";
-import { useState, useEffect } from "react";
-
-const photos = [
-  { src: "/images/kv.jpg", alt: "Photo 1" },
-  { src: "/images/ls.jpg", alt: "Photo 2" },
-  { src: "/images/3.jpg", alt: "Photo 3" },
-  { src: "/images/eug.jpg", alt: "Photo 4" },
-];
-
-// --- Time & Weather Widget ---
-function TimeWeatherWidget() {
-  const [time, setTime] = useState(new Date());
-  const [weather, setWeather] = useState<{ temp: number; condition: string } | null>(null);
-
-  useEffect(() => {
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    const lat = 27.7172;
-    const lon = 85.324;
-
-    fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&temperature_unit=fahrenheit`
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        const code = data.current.weather_code;
-        let condition = "clear";
-        if (code >= 51 && code <= 67) condition = "rain";
-        else if (code >= 1 && code <= 3) condition = "cloud";
-        else if (code >= 45 && code <= 48) condition = "cloud";
-
-        setWeather({ temp: Math.round(data.current.temperature_2m), condition });
-      })
-      .catch(() => setWeather({ temp: 75, condition: "cloud" }));
-  }, []);
-
-  const WeatherIcon =
-    weather?.condition === "rain" ? CloudRain : weather?.condition === "cloud" ? Cloud : Sun;
-
-  return (
-    <div className="inline-flex items-center gap-4 rounded-full border border-zinc-200 bg-white px-5 py-2.5 shadow-2xs dark:border-zinc-700/60 dark:bg-zinc-950/80">
-      <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        <Clock className="h-3.5 w-3.5 text-zinc-400" />
-        <span className="tabular-nums">
-          {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-      </div>
-      <div className="h-4 w-px bg-zinc-300 dark:bg-zinc-700" />
-      <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">
-        <WeatherIcon className="h-3.5 w-3.5 text-zinc-400" />
-        <span className="tabular-nums">{weather ? `${weather.temp}°F` : "--°F"}</span>
-      </div>
-    </div>
-  );
-}
+import { ArrowRight, Calendar, MapPin, Play, Pause, Utensils, Users } from "lucide-react";
+import { useState, useRef } from "react";
 
 export default function Home() {
+  const [isPlaying, setIsPlaying] = useState(true);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const toggleVideo = () => {
+    if (!videoRef.current) return;
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      videoRef.current.play();
+      setIsPlaying(true);
+    }
+  };
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-zinc-50/50 px-6 py-12 text-zinc-900 dark:bg-zinc-950/50 dark:text-zinc-100 sm:py-20">
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-[-6rem] top-[-4rem] h-64 w-64 rounded-full bg-pink-300/40 blur-3xl" />
-        <div className="absolute right-[-5rem] top-20 h-72 w-72 rounded-full bg-cyan-300/35 blur-3xl" />
-        <div className="absolute bottom-[-3rem] left-1/3 h-60 w-60 rounded-full bg-violet-300/35 blur-3xl" />
-      </div>
-      <div className="mx-auto max-w-5xl space-y-16">
-        {/* Hero Section */}
-        <section className="space-y-6">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3.5 py-1 text-xs font-semibold text-zinc-700 shadow-2xs dark:border-zinc-700/60 dark:bg-zinc-950/80 dark:text-zinc-100">
-              <Handshake className="h-4 w-4 text-zinc-900 dark:text-zinc-100" />
-              <span>Stories from Nepal</span>
+    <main className="min-h-screen bg-transparent text-zinc-900 transition-colors dark:text-zinc-100">
+      {/* --- Fullscreen Edge-to-Edge Hero Video Banner --- */}
+      <section className="relative w-full min-h-[calc(100vh-73px)] flex items-center justify-center overflow-hidden">
+        {/* Background Video */}
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          poster="/images/clouds-poster.jpg"
+          className="absolute inset-0 h-full w-full object-cover scale-[1.01] motion-reduce:hidden"
+        >
+          <source src="/images/clouds.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+
+        {/* Poster image fallback for users with prefers-reduced-motion */}
+        <img
+          src="/images/clouds-poster.jpg"
+          alt="Himalayan mountain peaks and clouds"
+          className="absolute inset-0 h-full w-full object-cover hidden motion-reduce:block"
+        />
+
+        {/* Scrim and Gradient Overlays for Maximum Contrast & Readability */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/50 to-black/35" />
+        <div className="absolute inset-0 bg-black/15" />
+
+        {/* Hero Content Overlay */}
+        <div className="relative z-10 mx-auto max-w-7xl px-6 py-12 sm:px-10 sm:py-16 md:px-14 lg:px-16 w-full">
+          <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-12">
+            {/* Left Column: Heading, Subtitle, Action Buttons */}
+            <div className="lg:col-span-7 space-y-4 sm:space-y-6 text-white">
+              <h1 className="font-serif text-3xl sm:text-5xl lg:text-6xl font-normal tracking-tight text-white leading-[1.12]">
+                Discover Nepal, <br />
+                <span>one story at a time.</span>
+              </h1>
+
+              <p className="max-w-xl text-xs sm:text-sm md:text-base text-zinc-200/90 font-light leading-relaxed">
+                Explore breathtaking places, meet inspiring people, taste authentic food, experience rich culture, and discover timeless traditions across Nepal.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Link
+                  href="/blog"
+                  className="group inline-flex items-center gap-2 rounded-full bg-[#c2593f] px-6 py-3 text-xs sm:text-sm font-medium text-white shadow-sm transition hover:bg-[#a94a32] active:scale-[0.98]"
+                >
+                  <span>Explore Stories</span>
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                </Link>
+
+                <Link
+                  href="/about"
+                  className="inline-flex items-center rounded-full border border-white/40 bg-black/25 px-6 py-3 text-xs sm:text-sm font-medium text-white backdrop-blur-xs transition hover:bg-black/45 hover:border-white/60 active:scale-[0.98]"
+                >
+                  About Nepal
+                </Link>
+              </div>
             </div>
-            <TimeWeatherWidget />
+
+            {/* Right Column: "— NEPAL —", Italic subtitle, Play/Pause control */}
+            <div className="flex flex-col items-center justify-center text-center lg:col-span-5 text-white">
+              <div className="flex items-center justify-center gap-3">
+                <span className="h-[1px] w-8 sm:w-12 bg-white/70" />
+                <span className="font-serif text-2xl sm:text-4xl md:text-5xl tracking-[0.3em] font-normal uppercase text-white drop-shadow-sm">
+                  NEPAL
+                </span>
+                <span className="h-[1px] w-8 sm:w-12 bg-white/70" />
+              </div>
+
+              <p className="mt-2 font-serif italic text-xs sm:text-sm md:text-base text-white/90 drop-shadow-sm">
+                A living story of the Himalayas
+              </p>
+            </div>
           </div>
+        </div>
+      </section>
 
-          <h1 className="text-4xl font-bold tracking-tight text-zinc-950 sm:text-6xl">
-            Discover Nepal <br className="hidden sm:inline" />
-            <span className="text-zinc-600">one story at a time.</span>
-          </h1>
-
-          <p className="max-w-2xl text-lg text-zinc-600 leading-relaxed">
-            Explore the places, people, food, culture, traditions, and experiences that make Nepal unique. Stories and guides for discovering Nepal beyond the usual destinations.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <Link
-              href="/auth/signup"
-              className="group flex items-center gap-2 rounded-full bg-zinc-950 px-6 py-3 text-sm font-semibold text-white shadow-xs transition hover:bg-zinc-800"
-            >
-              <span>Explore Stories</span>
-              <ArrowRight className="h-4 w-4 text-zinc-400 transition-transform group-hover:translate-x-1 group-hover:text-white" />
-            </Link>
-
-            <Link
-              href="/about"
-              className="rounded-full border border-zinc-200 bg-white px-6 py-3 text-sm font-semibold text-zinc-800 transition hover:bg-zinc-100 dark:border-zinc-700/60 dark:bg-zinc-950/80 dark:text-zinc-100 dark:hover:bg-zinc-800"
-            >
-              About Nepal
-            </Link>
-          </div>
-        </section>
-
-        {/* Full-Width Video Banner Section with "LEARN" in the Middle */}
-        <section className="relative left-1/2 right-1/2 -ml-[50vw]  -mr-[50vw] w-screen h-72 sm:h-96 md:h-[420px] rounded-3xl overflow-hidden shadow-lg border border-zinc-200/80 my-12 dark:border-zinc-700/60">
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            className="absolute inset-0 h-full w-full object-cover opacity-100"
+      {/* --- Rest of Home Page in Centered Container --- */}
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-8 sm:py-14 space-y-8 sm:space-y-10">
+        {/* --- Featured Highlights: 2 Large Cards --- */}
+        <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* Card 1: Kathmandu Valley / Culture */}
+          <Link
+            href="/blog"
+            className="group relative h-80 sm:h-96 w-full overflow-hidden rounded-[1.75rem] border border-black/5 shadow-xs transition duration-300 hover:shadow-md dark:border-white/10"
           >
-            <source src="/images/mmm.mp4" type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
+            <Image
+              src="/images/kv.jpg"
+              alt="Kathmandu Valley"
+              fill
+              priority
+              className="object-cover transition duration-700 group-hover:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
 
-          <div className="absolute inset-0 bg-black/30 backdrop-brightness-90" />
-
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-4">
-            <div className="flex flex-col items-center justify-center space-y-2 text-center">
-              <span className="text-4xl sm:text-6xl md:text-7xl font-extrabold tracking-widest text-white uppercase drop-shadow-lg select-none">
-               Nepal
+            {/* Top Tag */}
+            <div className="absolute top-5 left-5 z-10">
+              <span className="rounded-full bg-[#c2593f]/90 px-3.5 py-1 text-[11px] font-semibold tracking-wider text-white uppercase backdrop-blur-xs">
+                CULTURE
               </span>
-              <span className="h-1 w-12 rounded-full bg-white/80" />
             </div>
-          </div>
+
+            {/* Bottom Content */}
+            <div className="absolute inset-x-0 bottom-0 z-10 p-6 sm:p-7 space-y-2">
+              <h2 className="font-serif text-xl sm:text-2xl font-normal leading-snug text-white group-hover:text-amber-100 transition-colors">
+                Kathmandu Valley — Where History Lives in Every Corner
+              </h2>
+              <p className="text-xs sm:text-sm text-zinc-200/90 font-light leading-relaxed line-clamp-2">
+                Ancient temples, vibrant streets, and a culture that has stood the test of time.
+              </p>
+              <div className="flex items-center gap-3 pt-1 text-xs text-zinc-300/80 font-light">
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-zinc-300" />
+                  Apr 12, 2025
+                </span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-zinc-300" />
+                  Kathmandu
+                </span>
+              </div>
+            </div>
+          </Link>
+
+          {/* Card 2: Hidden Trails / Travel */}
+          <Link
+            href="/blog"
+            className="group relative h-80 sm:h-96 w-full overflow-hidden rounded-[1.75rem] border border-black/5 shadow-xs transition duration-300 hover:shadow-md dark:border-white/10"
+          >
+            <Image
+              src="/images/ls.jpg"
+              alt="Hidden Trails of the Himalayas"
+              fill
+              priority
+              className="object-cover transition duration-700 group-hover:scale-105"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
+
+            {/* Top Tag */}
+            <div className="absolute top-5 left-5 z-10">
+              <span className="rounded-full bg-[#3e6074]/90 px-3.5 py-1 text-[11px] font-semibold tracking-wider text-white uppercase backdrop-blur-xs">
+                TRAVEL
+              </span>
+            </div>
+
+            {/* Bottom Content */}
+            <div className="absolute inset-x-0 bottom-0 z-10 p-6 sm:p-7 space-y-2">
+              <h2 className="font-serif text-xl sm:text-2xl font-normal leading-snug text-white group-hover:text-amber-100 transition-colors">
+                Hidden Trails of the Himalayas
+              </h2>
+              <p className="text-xs sm:text-sm text-zinc-200/90 font-light leading-relaxed line-clamp-2">
+                From serene lakes to towering peaks, Nepal&apos;s landscapes never cease to amaze.
+              </p>
+              <div className="flex items-center gap-3 pt-1 text-xs text-zinc-300/80 font-light">
+                <span className="inline-flex items-center gap-1.5">
+                  <Calendar className="h-3.5 w-3.5 text-zinc-300" />
+                  Apr 5, 2025
+                </span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5 text-zinc-300" />
+                  Annapurna Region
+                </span>
+              </div>
+            </div>
+          </Link>
         </section>
 
-        {/* Gallery Showcase Grid */}
-        <section className="grid gap-6 md:grid-cols-2">
-          <div className="overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-3 shadow-2xs">
-            <div className="relative h-72 w-full overflow-hidden rounded-2xl sm:h-80">
-              <Image src={photos[0].src} alt={photos[0].alt} fill priority className="object-cover" />
+        {/* --- Key Pillars: 3 Clean Value Cards --- */}
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-3 sm:gap-6">
+          {/* Card 1: Travel & Adventure */}
+          <div className="flex flex-col justify-between rounded-2xl border border-[#E9E4DC] bg-white/70 p-6 sm:p-7 shadow-2xs transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/70">
+            <div className="space-y-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EFE9DF] text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                <svg
+                  className="h-6 w-6 text-[#b85437]"
+                  viewBox="0 0 28 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M2 17L9 5L16 17" />
+                  <path d="M12 17L18 3L26 17" />
+                </svg>
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-serif text-lg font-bold text-zinc-950 dark:text-zinc-50">
+                  Travel & Adventure
+                </h3>
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 font-light leading-relaxed">
+                  Trek majestic mountains, explore hidden valleys, and experience the thrill of Nepal&apos;s adventures.
+                </p>
+              </div>
             </div>
-            <div className="p-4 space-y-1">
-              <h2 className="text-lg font-bold text-zinc-950 dark:text-zinc-100">Culture</h2>
-              <p className="text-sm text-zinc-600 dark:text-zinc-300">The Culture Behind Kathmandu Valley</p>
-            </div>
+            <Link
+              href="/blog"
+              className="group mt-6 inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-[#c2593f] transition hover:text-[#9e442c]"
+            >
+              <span>Explore more</span>
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
 
-          <div className="overflow-hidden rounded-3xl border border-zinc-200/80 bg-white p-3 shadow-2xs">
-            <div className="relative h-72 w-full overflow-hidden rounded-2xl sm:h-80">
-              <Image src={photos[1].src} alt={photos[1].alt} fill className="object-cover" />
+          {/* Card 2: Food & Flavors */}
+          <div className="flex flex-col justify-between rounded-2xl border border-[#E9E4DC] bg-white/70 p-6 sm:p-7 shadow-2xs transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/70">
+            <div className="space-y-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EFE9DF] text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                <Utensils className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-serif text-lg font-bold text-zinc-950 dark:text-zinc-50">
+                  Food & Flavors
+                </h3>
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 font-light leading-relaxed">
+                  Savor authentic Nepali cuisine, from hearty dal bhat to local delicacies and traditional flavors.
+                </p>
+              </div>
             </div>
-            <div className="p-4 space-y-1">
-              <h2 className="text-lg font-bold text-zinc-950">Travel</h2>
-              <p className="text-sm text-zinc-600">Explore stunning landscapes and rich cultures around the Nepal.</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Key Pillars */}
-        <section className="grid gap-6 sm:grid-cols-3">
-          <div className="rounded-3xl border border-zinc-200/80 bg-white p-6 space-y-3 shadow-2xs dark:border-zinc-700/60 dark:bg-zinc-950/80">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-950 dark:bg-zinc-800 dark:text-zinc-100">
-              < Zap className="h-5 w-5" />
-            </div>
-            <h3 className="text-base font-bold text-zinc-950 dark:text-zinc-100">Travel & Adventure</h3>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-           Trekking routes, hidden destinations, travel guides, and unforgettable adventures across Nepal
-            </p>
-          </div>
-
-          <div className="rounded-3xl border border-zinc-200/80 bg-white p-6 space-y-3 shadow-2xs dark:border-zinc-700/60 dark:bg-zinc-950/80">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-950 dark:bg-zinc-800 dark:text-zinc-100">
-              <Utensils className="h-5 w-5" />
-            </div>
-            <h3 className="text-base font-bold text-zinc-950 dark:text-zinc-100">Food & Flavors</h3>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-              Discover momo, dal bhat, Newari cuisine, local dishes, and the stories behind Nepali food culture.
-            </p>
+            <Link
+              href="/blog"
+              className="group mt-6 inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-[#c2593f] transition hover:text-[#9e442c]"
+            >
+              <span>Explore more</span>
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
 
-          <div className="rounded-3xl border border-zinc-200/80 bg-white p-6 space-y-3 shadow-2xs dark:border-zinc-700/60 dark:bg-zinc-950/80">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-950 text-white">
-              <Camera className="h-5 w-5" />
+          {/* Card 3: People & Culture */}
+          <div className="flex flex-col justify-between rounded-2xl border border-[#E9E4DC] bg-white/70 p-6 sm:p-7 shadow-2xs transition hover:shadow-md dark:border-zinc-800 dark:bg-zinc-900/70">
+            <div className="space-y-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#EFE9DF] text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200">
+                <Users className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
+              </div>
+              <div className="space-y-1.5">
+                <h3 className="font-serif text-lg font-bold text-zinc-950 dark:text-zinc-50">
+                  People & Culture
+                </h3>
+                <p className="text-xs sm:text-sm text-zinc-600 dark:text-zinc-400 font-light leading-relaxed">
+                  Meet the warm-hearted locals, discover unique traditions, and celebrate the rich cultural heritage of Nepal.
+                </p>
+              </div>
             </div>
-            <h3 className="text-base font-bold text-zinc-950 dark:text-zinc-100">People & Culture</h3>
-            <p className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed">
-              Stories about Nepali communities, festivals, traditions, heritage, and the people who keep them alive.
-            </p>
+            <Link
+              href="/blog"
+              className="group mt-6 inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-[#c2593f] transition hover:text-[#9e442c]"
+            >
+              <span>Explore more</span>
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
         </section>
       </div>
     </main>
-    
   );
 }

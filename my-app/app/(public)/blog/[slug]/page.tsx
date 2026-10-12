@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, Calendar } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { getPostBySlug } from "@/lib/db";
 import { cleanHtml } from "@/lib/sanitize";
 
@@ -10,7 +10,7 @@ type PageProps = {
 };
 
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
+  return new Date(iso).toLocaleDateString("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric",
@@ -26,24 +26,27 @@ export default async function BlogPostPage({ params }: PageProps) {
   }
 
   return (
-    <main className="min-h-screen bg-white px-6 py-14 dark:bg-zinc-950 sm:py-20">
-      <article className="mx-auto max-w-3xl">
-        <Link
-          href="/blog"
-          className="inline-flex items-center gap-2 text-sm font-medium text-zinc-500 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to Blog
-        </Link>
+    <main className="relative min-h-screen bg-transparent px-4 py-8 sm:px-6 sm:py-12 md:py-16">
+      <article className="mx-auto max-w-3xl space-y-7">
+        {/* Back Link */}
+        <div>
+          <Link
+            href="/blog"
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-medium text-zinc-500 transition hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Back to Blog</span>
+          </Link>
+        </div>
 
+        {/* Featured Image */}
         {post.featured_image ? (
-          <figure className="mt-8">
-            <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900">
+          <figure className="overflow-hidden rounded-[1.75rem] sm:rounded-3xl border border-black/5 bg-zinc-100 shadow-md dark:border-white/10 dark:bg-zinc-900">
+            <div className="relative aspect-[16/10] sm:aspect-[16/9] w-full overflow-hidden">
               <Image
                 src={post.featured_image}
                 alt={post.title}
-                width={1200}
-                height={1200}
+                fill
                 className="object-cover"
                 sizes="(min-width: 768px) 768px, 100vw"
                 priority
@@ -52,29 +55,33 @@ export default async function BlogPostPage({ params }: PageProps) {
           </figure>
         ) : null}
 
-        <div className="mt-10 space-y-5 border-b border-zinc-200 pb-8 dark:border-zinc-800">
-          <div className="flex items-center gap-3 text-xs font-semibold uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
-            <span>{post.category}</span>
-            <span className="h-1 w-1 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-            <span className="inline-flex items-center gap-1.5 normal-case tracking-normal">
-              <Calendar className="h-3.5 w-3.5" />
-              {formatDate(post.created_at)}
-            </span>
+        {/* Article Header & Meta */}
+        <div className="space-y-4 pt-1">
+          {/* Metadata Pill */}
+          <div className="inline-flex flex-wrap items-center gap-2 rounded-full bg-zinc-200/70 px-3.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800/80 dark:text-zinc-300">
+            <span>{post.category || "GENERAL"}</span>
+            <span className="text-zinc-400 dark:text-zinc-600">•</span>
+            <span>{formatDate(post.created_at).toUpperCase()}</span>
+            <span className="text-zinc-400 dark:text-zinc-600">•</span>
+            <span>5 MIN READ</span>
           </div>
 
-          <h1 className="font-serif text-3xl font-bold leading-[1.1] tracking-tight text-zinc-950 dark:text-white sm:text-4xl">
+          {/* Title */}
+          <h1 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight text-zinc-950 dark:text-white leading-[1.12]">
             {post.title}
           </h1>
 
+          {/* Subtitle / Excerpt */}
           {post.excerpt ? (
-            <p className="text-lg leading-relaxed text-zinc-600 dark:text-zinc-400">
+            <p className="text-base sm:text-lg font-medium leading-relaxed text-zinc-700 dark:text-zinc-300">
               {post.excerpt}
             </p>
           ) : null}
         </div>
 
+        {/* Content Body */}
         <div
-          className="prose prose-zinc mt-8 max-w-none prose-headings:font-serif prose-headings:font-bold prose-p:leading-relaxed prose-a:text-zinc-950 prose-a:underline prose-a:underline-offset-2 dark:prose-invert dark:prose-a:text-white"
+          className="prose prose-zinc max-w-none pt-2 prose-headings:font-serif prose-headings:font-bold prose-p:leading-relaxed prose-li:leading-relaxed prose-a:text-zinc-950 prose-a:underline prose-a:underline-offset-2 dark:prose-invert dark:prose-a:text-white"
           dangerouslySetInnerHTML={{ __html: cleanHtml(post.content) }}
         />
       </article>

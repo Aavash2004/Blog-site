@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { z } from "zod";
@@ -16,7 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Toast, ToastViewport } from "@/components/ui/toast";
 
-import { EyeIcon, EyeOffIcon, ArrowRight, Handshake } from "lucide-react";
+import { EyeIcon, EyeOffIcon, ArrowRight, ArrowLeft } from "lucide-react";
 const signupSchema = z
   .object({
     name: z
@@ -118,28 +119,56 @@ router.push("/auth/login");
   };
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-zinc-50 px-6 py-16 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <div className="absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-[-4rem] top-[-2rem] h-64 w-64 rounded-full bg-pink-300/40 blur-3xl dark:bg-pink-500/10" />
-        <div className="absolute right-[-4rem] top-20 h-72 w-72 rounded-full bg-cyan-300/35 blur-3xl dark:bg-cyan-500/10" />
-        <div className="absolute bottom-[-3rem] left-1/3 h-60 w-60 rounded-full bg-violet-300/35 blur-3xl dark:bg-violet-500/10" />
-      </div>
-      <div className="w-full max-w-md space-y-6">
-        {/* Brand Header */}
-        <div className="flex flex-col items-center text-center space-y-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-zinc-950 text-white shadow-xs dark:bg-white dark:text-zinc-950">
-            <Handshake className="h-5 w-5" />
-          </div>
-          <span className="text-xl font-bold tracking-tight text-zinc-950 dark:text-white">Blogs</span>
+    <main className="relative flex min-h-[calc(100vh-140px)] items-center justify-center bg-transparent px-4 py-8 sm:py-12 text-zinc-900 dark:text-zinc-100">
+      <div className="w-full max-w-md space-y-4">
+        {/* Navigation & Brand Header */}
+        <div className="flex items-center justify-between px-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <Link
+            href="/"
+            className="group inline-flex items-center gap-1.5 font-medium transition hover:text-zinc-950 dark:hover:text-white"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+            <span>Back to Home</span>
+          </Link>
+          <span className="font-serif italic text-zinc-400 dark:text-zinc-500">
+            Our Nepal
+          </span>
         </div>
 
-        <Card className="border border-zinc-200/80 bg-white p-0 shadow-md rounded-3xl dark:border-zinc-800 dark:bg-zinc-900">
-          <CardHeader className="p-8 pb-4 text-center">
-            <CardTitle className="text-2xl font-bold tracking-tight text-zinc-950 dark:text-white">
+        <Card className="relative overflow-hidden rounded-3xl border border-black/[0.07] bg-white/85 p-0 shadow-xl backdrop-blur-xl dark:border-white/10 dark:bg-zinc-900/85">
+          {/* Subtle Himalayan mountain watermark decoration */}
+          <div className="pointer-events-none absolute -right-6 -top-4 w-44 opacity-25 dark:opacity-15 select-none">
+            <img src="/mount.svg" alt="" className="w-full h-auto object-contain" />
+          </div>
+
+          {/* Segmented Auth Switcher (Log in / Sign up) */}
+          <div className="mx-8 mt-7 flex rounded-full bg-zinc-100/90 p-1 dark:bg-zinc-800/90">
+            <Link
+              href="/auth/login"
+              className="flex-1 rounded-full py-1.5 text-center text-xs font-medium text-zinc-500 transition hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white"
+            >
+              Log in
+            </Link>
+            <div className="flex-1 rounded-full bg-white py-1.5 text-center text-xs font-semibold text-zinc-950 shadow-xs dark:bg-zinc-900 dark:text-white">
+              Sign up
+            </div>
+          </div>
+
+          <CardHeader className="p-8 pt-5 pb-3 text-center">
+            <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-zinc-950 ring-1 ring-black/10 dark:bg-white shadow-xs">
+              <Image
+                src="/nep.webp"
+                alt="Our Nepal"
+                width={20}
+                height={20}
+                className="h-3.5 w-3.5 object-contain"
+              />
+            </div>
+            <CardTitle className="font-serif text-2xl font-bold tracking-tight text-zinc-950 dark:text-white">
               Create an account
             </CardTitle>
-            <CardDescription className="text-sm text-zinc-500 dark:text-zinc-400">
-              Get started with your project workspace.
+            <CardDescription className="text-xs sm:text-sm text-zinc-500 dark:text-zinc-400">
+              Join the Our Nepal community to share and discover timeless stories.
             </CardDescription>
           </CardHeader>
 
