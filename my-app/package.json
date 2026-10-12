@@ -8,7 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "schema:check": "tsx scripts/schema-check.ts",
+    "schema:test-migration": "tsx scripts/test-old-schema-simulation.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

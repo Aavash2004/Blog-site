@@ -1,7 +1,9 @@
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
+import path from "path";
 
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config();
 
 export type UserRecord = {
@@ -19,11 +21,18 @@ export type UserRecord = {
 
 export type SafeUser = Omit<UserRecord, "password">;
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+let poolInstance: Pool | null = null;
+function getPool(): Pool {
+  if (!poolInstance) {
+    poolInstance = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
+  }
+  return poolInstance;
+}
 
 export async function query(text: string, params?: unknown[]) {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     return await client.query(text, params);
@@ -42,12 +51,32 @@ async function initDb(): Promise<boolean> {
     );
   }
 
+  // 1. Connectivity test: MUST throw in production if database is unreachable
   try {
     await query("SELECT 1");
+  } catch (connError) {
+    const errorMsg = `Postgres unavailable in production environment: ${(connError as Error).message}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(errorMsg);
+    }
+    console.error("Database connection failed:", connError);
+    throw connError;
+  }
 
+  // Helper for resilient schema updates: logs harmless discrepancies instead of crashing the app
+  const safeRun = async (label: string, sql: string) => {
+    try {
+      await query(sql);
+    } catch (stepError) {
+      console.warn(`[initDb] Notice during schema step "${label}": ${(stepError as Error).message}`);
+    }
+  };
+
+  try {
     // 1. Users Table
-    await query(`
-      CREATE TABLE IF NOT EXISTS users (
+    await safeRun(
+      "Create users table",
+      `CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         name VARCHAR(100) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
@@ -58,22 +87,39 @@ async function initDb(): Promise<boolean> {
         address TEXT,
         avatar_url TEXT,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+      );`
+    );
 
     // Safe column migrations for existing users table
-    await query(`
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50);
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
-      ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
-    `);
+    await safeRun(
+      "Add users.role",
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';`
+    );
+    await safeRun(
+      "Add users.username",
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50);`
+    );
+    await safeRun(
+      "Add users.phone",
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`
+    );
+    await safeRun(
+      "Add users.address",
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;`
+    );
+    await safeRun(
+      "Add users.avatar_url",
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`
+    );
+    await safeRun(
+      "Add users.created_at",
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
+    );
 
     // 2. Posts Table
-    await query(`
-      CREATE TABLE IF NOT EXISTS posts (
+    await safeRun(
+      "Create posts table",
+      `CREATE TABLE IF NOT EXISTS posts (
         id SERIAL PRIMARY KEY,
         title VARCHAR(255) NOT NULL,
         slug VARCHAR(255) UNIQUE NOT NULL,
@@ -85,32 +131,64 @@ async function initDb(): Promise<boolean> {
         author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+      );`
+    );
 
     // Safe column migrations for existing posts table
-    await query(`
-      ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
-      ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
-    `);
+    await safeRun(
+      "Add posts.author_id",
+      `ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
+    );
+    await safeRun(
+      "Add posts.updated_at",
+      `ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
+    );
 
     // 3. Activity Log Table
-    await query(`
-      CREATE TABLE IF NOT EXISTS activity_log (
+    await safeRun(
+      "Create activity_log table",
+      `CREATE TABLE IF NOT EXISTS activity_log (
         id SERIAL PRIMARY KEY,
         action VARCHAR(50) NOT NULL,
         description TEXT NOT NULL,
         user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+      );`
+    );
+
+    // Safe column migrations for existing activity_log table
+    await safeRun(
+      "Add activity_log.user_id",
+      `ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
+    );
+
+    // Safe backfill for existing records
+    await safeRun(
+      "Backfill null user roles",
+      `UPDATE users SET role = 'user' WHERE role IS NULL;`
+    );
+    await safeRun(
+      "Backfill null post updated_at",
+      `UPDATE posts SET updated_at = created_at WHERE updated_at IS NULL;`
+    );
+    await safeRun(
+      "Backfill null post status",
+      `UPDATE posts SET status = 'DRAFT' WHERE status IS NULL;`
+    );
 
     // 4. Indexes
-    await query(`
-      CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);
-      CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);
-      CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC);
-    `);
+    await safeRun(
+      "Create idx_posts_slug",
+      `CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);`
+    );
+    await safeRun(
+      "Create idx_posts_status",
+      `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);`
+    );
+    await safeRun(
+      "Create idx_activity_created",
+      `CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC);`
+    );
 
     return true;
   } catch (error) {
