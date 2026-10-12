@@ -49,11 +49,18 @@ export async function runMigrationsOnClient(client: {
     params?: unknown[]
   ) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
 }): Promise<boolean> {
-  // Helper for resilient schema updates: logs harmless discrepancies instead of crashing the app
+  let stepIndex = 0;
+  // Helper for resilient schema updates within a transaction:
+  // Wraps each step in a SAVEPOINT so that harmless discrepancies do not abort the outer transaction block
   const safeRun = async (label: string, sql: string) => {
+    stepIndex++;
+    const savepointName = `sp_mig_${stepIndex}`;
     try {
+      await client.query(`SAVEPOINT ${savepointName};`);
       await client.query(sql);
+      await client.query(`RELEASE SAVEPOINT ${savepointName};`);
     } catch (stepError) {
+      await client.query(`ROLLBACK TO SAVEPOINT ${savepointName};`).catch(() => {});
       console.warn(`[initDb] Notice during schema step "${label}": ${(stepError as Error).message}`);
     }
   };
@@ -187,6 +194,28 @@ export async function runMigrationsOnClient(client: {
     `CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC);`
   );
 
+  // Conditional LOWER(email) unique index:
+  // Before creating unique index on LOWER(email), check for duplicate lowercased emails.
+  // If duplicates exist, log them loudly and SKIP creating the index so migration does not fail.
+  const dupCheckResult = await client.query(`
+    SELECT LOWER(email) AS lower_email, COUNT(*)::int AS count
+    FROM users
+    GROUP BY LOWER(email)
+    HAVING COUNT(*) > 1;
+  `);
+
+  if (dupCheckResult.rows && dupCheckResult.rows.length > 0) {
+    console.warn(
+      `[initDb] ⚠️ Duplicate lowercased emails detected in users table (${dupCheckResult.rows.length} groups). Skipping creation of 'users_email_lower_key' unique index to prevent migration abort:`,
+      dupCheckResult.rows
+    );
+  } else {
+    await safeRun(
+      "Create unique index on LOWER(email)",
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_key ON users (LOWER(email));`
+    );
+  }
+
   // 5. Verification step: verify every required column exists
   const colCheckResult = await client.query(`
     SELECT table_name, column_name
@@ -226,8 +255,19 @@ export async function runMigrationsOnClient(client: {
   return true;
 }
 
-export async function initDb(customPool?: Pool): Promise<boolean> {
+export interface InitDbOptions {
+  artificialDelaySeconds?: number;
+  poolLabel?: string;
+  onLockAcquired?: (label: string, timestamp: string) => void;
+  onLockReleased?: (label: string, timestamp: string) => void;
+}
+
+export async function initDb(
+  customPool?: Pool,
+  options?: InitDbOptions
+): Promise<boolean> {
   const targetPool = customPool || getPool();
+  const label = options?.poolLabel || "initDb";
 
   if (!process.env.DATABASE_URL) {
     if (process.env.NODE_ENV === "production") {
@@ -253,17 +293,40 @@ export async function initDb(customPool?: Pool): Promise<boolean> {
   }
 
   try {
-    // 2. Wrap migration in pg_advisory_lock so concurrent cold starts run one at a time
-    await client.query("SELECT pg_advisory_lock($1)", [DB_MIGRATION_LOCK_KEY]);
+    // 2. Single transaction with transaction-level advisory lock (pg_advisory_xact_lock)
+    // Reliable in Neon's PgBouncer transaction mode: automatically released at COMMIT or ROLLBACK
+    await client.query("BEGIN;");
+    await client.query("SELECT pg_advisory_xact_lock($1);", [DB_MIGRATION_LOCK_KEY]);
 
-    try {
-      return await runMigrationsOnClient(client);
-    } finally {
-      await client.query("SELECT pg_advisory_unlock($1)", [DB_MIGRATION_LOCK_KEY]).catch((unlockErr) => {
-        console.warn("[initDb] Notice releasing advisory lock:", unlockErr);
-      });
+    const acquiredTimestamp = new Date().toISOString();
+    console.log(`  [${label}] Advisory lock acquired at ${acquiredTimestamp}`);
+    if (options?.onLockAcquired) {
+      options.onLockAcquired(label, acquiredTimestamp);
     }
+
+    if (options?.artificialDelaySeconds && options.artificialDelaySeconds > 0) {
+      console.log(`  [${label}] Artificial delay: sleeping for ${options.artificialDelaySeconds}s inside lock...`);
+      await client.query(`SELECT pg_sleep(${options.artificialDelaySeconds});`);
+    }
+
+    await runMigrationsOnClient(client);
+
+    await client.query("COMMIT;");
+    const releasedTimestamp = new Date().toISOString();
+    console.log(`  [${label}] Advisory lock released (committed) at ${releasedTimestamp}`);
+    if (options?.onLockReleased) {
+      options.onLockReleased(label, releasedTimestamp);
+    }
+
+    return true;
   } catch (error) {
+    await client.query("ROLLBACK;").catch(() => {});
+    const rollbackTimestamp = new Date().toISOString();
+    console.log(`  [${label}] Advisory lock released (rolled back) at ${rollbackTimestamp}`);
+    if (options?.onLockReleased) {
+      options.onLockReleased(label, rollbackTimestamp);
+    }
+
     if (process.env.NODE_ENV === "production") {
       throw new Error(
         `Postgres unavailable in production environment: ${(error as Error).message}`
@@ -310,14 +373,22 @@ export async function createUserRecord(name: string, email: string, password: st
     return { success: false, duplicate: true } as const;
   }
 
-  const result = await query(
-    `INSERT INTO users (name, email, password, role)
-     VALUES ($1, $2, $3, $4)
-     RETURNING id, name, email, role, username, phone, address, avatar_url, created_at`,
-    [name, normalizedEmail, hashedPassword, role]
-  );
+  try {
+    const result = await query(
+      `INSERT INTO users (name, email, password, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, role, username, phone, address, avatar_url, created_at`,
+      [name, normalizedEmail, hashedPassword, role]
+    );
 
-  return { success: true, user: result.rows[0] as SafeUser } as const;
+    return { success: true, user: result.rows[0] as SafeUser } as const;
+  } catch (err: unknown) {
+    // Catch PostgreSQL unique_violation error code 23505 (e.g. race conditions during signup)
+    if ((err as { code?: string })?.code === "23505") {
+      return { success: false, duplicate: true } as const;
+    }
+    throw err;
+  }
 }
 
 export async function updateUserPassword(userId: number, currentPassword: string, newPassword: string) {
