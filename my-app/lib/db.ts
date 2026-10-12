@@ -32,18 +32,6 @@ export async function query(text: string, params?: unknown[]) {
   }
 }
 
-function getAdminEmails(): string[] {
-  const raw = process.env.ADMIN_EMAILS || "";
-  return raw
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-export function isAdminEmail(email: string): boolean {
-  return getAdminEmails().includes(email.trim().toLowerCase());
-}
-
 async function initDb(): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
     if (process.env.NODE_ENV === "production") {
@@ -159,7 +147,7 @@ export async function createUserRecord(name: string, email: string, password: st
   await ensureDb();
   const normalizedEmail = email.trim().toLowerCase();
   const hashedPassword = await bcrypt.hash(password, 12);
-  const role = isAdminEmail(normalizedEmail) ? "admin" : "user";
+  const role = "user" as const;
 
   const existing = await query("SELECT 1 FROM users WHERE LOWER(email) = $1", [normalizedEmail]);
   if (existing.rowCount && existing.rowCount > 0) {

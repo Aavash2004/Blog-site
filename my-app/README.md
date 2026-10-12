@@ -45,11 +45,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ## Admin Bootstrap
 
-> [!WARNING]
-> `ADMIN_EMAILS` only auto-promotes users upon initial registration/signup and never demotes users.
-> For production environments, the recommended and primary mechanism to manage roles is the seed script.
-
-To promote an existing user to `admin`, run the seed script:
+To promote an existing registered user to `admin`, run the seed script:
 
 ```bash
 pnpm run seed:admin <email>
