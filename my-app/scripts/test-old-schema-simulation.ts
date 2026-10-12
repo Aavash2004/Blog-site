@@ -6,8 +6,11 @@ import { Pool } from "pg";
 dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
+import { assertLocalDatabase } from "./guard-local-db";
 import {
-  ensureDb,
+  initDb,
+  resetDbReadyPromise,
+  createUserRecord,
   findUserByEmailAndPassword,
   findUserById,
   getAllPosts,
@@ -24,6 +27,11 @@ async function runSimulation() {
     console.error("❌ DATABASE_URL is not configured.");
     process.exit(1);
   }
+
+  // --------------------------------------------------------------------------
+  // GUARD: Refuse to run against remote/production databases
+  // --------------------------------------------------------------------------
+  assertLocalDatabase(connectionString);
 
   const pool = new Pool({ connectionString });
   const client = await pool.connect();
@@ -84,7 +92,7 @@ async function runSimulation() {
     console.log("✓ Legacy schema created successfully.");
 
     // --------------------------------------------------------------------------
-    // STEP 3: Seed legacy rows
+    // STEP 3: Seed legacy rows (including lowercase & mixed-case statuses)
     // --------------------------------------------------------------------------
     console.log("\n[STEP 3] Seeding legacy database with pre-Phase-1 data...");
     const rawPassword = "LegacyPassword2026!";
@@ -98,11 +106,13 @@ async function runSimulation() {
     );
     const legacyUser = userInsert.rows[0];
 
+    // Seed posts with lowercase and mixed-case status values to test safe normalization
     const postInsert = await client.query(
       `INSERT INTO posts (title, slug, excerpt, content, category, status)
        VALUES 
-         ('Annapurna Circuit Trek Guide', 'annapurna-circuit-trek-guide', 'Historic trek guide excerpt.', 'Full trekking story and tips...', 'Trekking', 'PUBLISHED'),
-         ('Work in Progress Trek', 'wip-trek', 'Unpublished draft notes.', 'Draft content...', 'Culture', 'DRAFT')
+         ('Annapurna Circuit Trek Guide', 'annapurna-circuit-trek-guide', 'Historic trek guide excerpt.', 'Full trekking story and tips...', 'Trekking', 'published'),
+         ('Work in Progress Trek', 'wip-trek', 'Unpublished draft notes.', 'Draft content...', 'Culture', 'draft'),
+         ('Mount Everest Base Camp Trek', 'everest-base-camp', 'Everest expedition tips.', 'Climbing details...', 'Adventure', 'Published')
        RETURNING id, title, slug, status;`
     );
 
@@ -113,7 +123,8 @@ async function runSimulation() {
     );
 
     console.log(`✓ Seeded 1 legacy user (id: ${legacyUser.id}, email: ${legacyUser.email})`);
-    console.log(`✓ Seeded ${postInsert.rowCount} legacy posts (IDs: ${postInsert.rows.map(r => r.id).join(", ")})`);
+    console.log(`✓ Seeded ${postInsert.rowCount} legacy posts with non-uppercase statuses:`);
+    console.table(postInsert.rows);
     console.log(`✓ Seeded ${activityInsert.rowCount} legacy activity log record`);
 
     // Verify missing columns before migration
@@ -128,21 +139,47 @@ async function runSimulation() {
     );
 
     console.log("\nLegacy Column Verification Before Migration:");
-    console.log("users columns:", userColsBefore.rows.map(r => r.column_name).join(", "));
-    console.log("posts columns:", postColsBefore.rows.map(r => r.column_name).join(", "));
-    console.log("activity_log columns:", actColsBefore.rows.map(r => r.column_name).join(", "));
+    console.log("users columns:", userColsBefore.rows.map((r) => r.column_name).join(", "));
+    console.log("posts columns:", postColsBefore.rows.map((r) => r.column_name).join(", "));
+    console.log("activity_log columns:", actColsBefore.rows.map((r) => r.column_name).join(", "));
 
     // --------------------------------------------------------------------------
-    // STEP 4: Run ensureDb() / initDb()
+    // STEP 4: Test Concurrency & Advisory Lock
     // --------------------------------------------------------------------------
-    console.log("\n[STEP 4] Executing initDb() migration on legacy database...");
-    const initResult = await ensureDb();
-    console.log(`✓ initDb() returned: ${initResult}`);
+    console.log("\n[STEP 4] Testing concurrent initDb() cold-starts with two separate connection pools...");
+    resetDbReadyPromise();
+
+    const poolA = new Pool({ connectionString });
+    const poolB = new Pool({ connectionString });
+
+    const startTime = Date.now();
+    const [resA, resB] = await Promise.all([
+      (async () => {
+        const startA = Date.now();
+        console.log("  [Pool A] Attempting schema migration under advisory lock...");
+        const res = await initDb(poolA);
+        console.log(`  [Pool A] Completed in ${Date.now() - startA}ms (success: ${res})`);
+        return res;
+      })(),
+      (async () => {
+        const startB = Date.now();
+        console.log("  [Pool B] Attempting schema migration under advisory lock...");
+        const res = await initDb(poolB);
+        console.log(`  [Pool B] Completed in ${Date.now() - startB}ms (success: ${res})`);
+        return res;
+      })(),
+    ]);
+
+    await poolA.end();
+    await poolB.end();
+
+    console.log(`✓ Both concurrent migrations completed in ${Date.now() - startTime}ms without conflict.`);
+    console.log(`✓ Pool A result: ${resA}, Pool B result: ${resB}`);
 
     // --------------------------------------------------------------------------
-    // STEP 5: Verify no data loss and presence of new columns
+    // STEP 5: Verify no data loss, new columns, and status normalization
     // --------------------------------------------------------------------------
-    console.log("\n[STEP 5] Verifying schema migrations and data integrity...");
+    console.log("\n[STEP 5] Verifying schema migrations, data integrity, and status normalization...");
 
     // Check users
     const usersAfter = await client.query("SELECT * FROM users ORDER BY id;");
@@ -163,10 +200,21 @@ async function runSimulation() {
       throw new Error(`Expected role 'user', got '${migratedUser.role}'`);
     }
 
-    // Check posts
-    const postsAfter = await client.query("SELECT id, title, slug, status, author_id, updated_at FROM posts ORDER BY id;");
-    console.log(`✓ Posts count: ${postsAfter.rowCount} (expected: 2)`);
+    // Check posts and status normalization
+    const postsAfter = await client.query(
+      "SELECT id, title, slug, status, author_id, updated_at FROM posts ORDER BY id;"
+    );
+    console.log(`✓ Posts count: ${postsAfter.rowCount} (expected: 3)`);
+    console.log("  Posts table after migration (verifying UPPERCASE normalization):");
     console.table(postsAfter.rows);
+
+    // Verify all posts are normalized to UPPERCASE
+    for (const post of postsAfter.rows) {
+      if (post.status !== "PUBLISHED" && post.status !== "DRAFT") {
+        throw new Error(`Expected uppercase status 'PUBLISHED' or 'DRAFT', got '${post.status}'`);
+      }
+    }
+    console.log("✓ All post status values verified to be normalized to uppercase ('PUBLISHED' / 'DRAFT')!");
 
     // Check activity_log
     const actAfter = await client.query("SELECT * FROM activity_log ORDER BY id;");
@@ -174,25 +222,46 @@ async function runSimulation() {
     console.table(actAfter.rows);
 
     // --------------------------------------------------------------------------
-    // STEP 6: Verify Login for the old user
+    // STEP 6: Verify Login for the old user (both exact case and mixed case)
     // --------------------------------------------------------------------------
     console.log("\n[STEP 6] Testing authentication for the legacy user...");
-    const authResult = await findUserByEmailAndPassword("legacy.author@example.com", rawPassword);
-    if (!authResult) {
-      throw new Error("❌ Login failed for legacy user with valid password!");
+    const authResultExact = await findUserByEmailAndPassword("legacy.author@example.com", rawPassword);
+    if (!authResultExact) {
+      throw new Error("❌ Login failed for legacy user with exact email!");
     }
-    console.log("✓ Login succeeded for legacy user!");
-    console.log("  Authenticated user object:", authResult);
+    console.log("✓ Login succeeded for exact email (legacy.author@example.com)!");
+
+    const authResultMixed = await findUserByEmailAndPassword("LEGACY.AUTHOR@EXAMPLE.COM", rawPassword);
+    if (!authResultMixed) {
+      throw new Error("❌ Login failed for legacy user with uppercase email!");
+    }
+    console.log("✓ Login succeeded for uppercase email (LEGACY.AUTHOR@EXAMPLE.COM) via case-insensitive normalization!");
 
     // --------------------------------------------------------------------------
-    // STEP 7: Verify Old posts list and edit
+    // STEP 7: Duplicate-looking email in different case test
     // --------------------------------------------------------------------------
-    console.log("\n[STEP 7] Testing post queries and editing...");
+    console.log("\n[STEP 7] Testing duplicate-looking email in different case (Legacy.Author@EXAMPLE.COM)...");
+    const duplicateAttempt = await createUserRecord(
+      "Duplicate Imposter",
+      "Legacy.Author@EXAMPLE.COM",
+      "DifferentPassword999!"
+    );
+
+    console.log("  Result of registering duplicate-looking email:", duplicateAttempt);
+    if (duplicateAttempt.success || !duplicateAttempt.duplicate) {
+      throw new Error("❌ Expected createUserRecord to reject duplicate-looking email in different case!");
+    }
+    console.log("✓ Registration safely rejected: createUserRecord detected case-insensitive duplicate and returned duplicate: true.");
+
+    // --------------------------------------------------------------------------
+    // STEP 8: Verify Old posts list and edit
+    // --------------------------------------------------------------------------
+    console.log("\n[STEP 8] Testing post queries and editing...");
     const allPosts = await getAllPosts();
     console.log(`✓ getAllPosts() returned ${allPosts.length} posts`);
 
     const publishedPosts = await getPublishedPosts();
-    console.log(`✓ getPublishedPosts() returned ${publishedPosts.length} published post (expected: 1)`);
+    console.log(`✓ getPublishedPosts() returned ${publishedPosts.length} published posts (expected: 2: Annapurna & Everest)`);
 
     const postToEdit = allPosts[0];
     console.log(`  Updating post id ${postToEdit.id} (${postToEdit.title})...`);
@@ -211,9 +280,9 @@ async function runSimulation() {
     console.log("✓ Post updated successfully! New updated_at:", updatedPost.updated_at);
 
     // --------------------------------------------------------------------------
-    // STEP 8: Verify Admin Dashboard loads
+    // STEP 9: Verify Admin Dashboard loads
     // --------------------------------------------------------------------------
-    console.log("\n[STEP 8] Testing admin promotion and dashboard queries...");
+    console.log("\n[STEP 9] Testing admin promotion and dashboard queries...");
     const promoteResult = await promoteUserToAdmin("legacy.author@example.com");
     console.log(`✓ promoteUserToAdmin result:`, promoteResult);
 
@@ -226,16 +295,17 @@ async function runSimulation() {
     const recentActivity = await getRecentActivity(5);
     console.log(`✓ getRecentActivity() returned ${recentActivity.length} events:`);
     console.table(recentActivity);
+
     // --------------------------------------------------------------------------
-    // STEP 9: Verify unreachable DB in production throws
+    // STEP 10: Verify unreachable DB in production throws
     // --------------------------------------------------------------------------
-    console.log("\n[STEP 9] Verifying initDb() throws when database is unreachable in production...");
+    console.log("\n[STEP 10] Verifying initDb() throws when database is unreachable in production...");
     const originalEnv = process.env.NODE_ENV;
     const originalUrl = process.env.DATABASE_URL;
     try {
       (process.env as Record<string, string | undefined>).NODE_ENV = "production";
       process.env.DATABASE_URL = "postgresql://postgres:badpass@127.0.0.1:54329/nonexistent?connect_timeout=2";
-      
+
       const testPool = new Pool({
         connectionString: process.env.DATABASE_URL,
         connectionTimeoutMillis: 2000,
@@ -248,7 +318,9 @@ async function runSimulation() {
       } catch (err) {
         threwAsExpected = true;
         console.log(`✓ Confirmed connection error throws: ${(err as Error).message}`);
-        console.log(`✓ Production error formatting: "Postgres unavailable in production environment: ${(err as Error).message}"`);
+        console.log(
+          `✓ Production error formatting: "Postgres unavailable in production environment: ${(err as Error).message}"`
+        );
       } finally {
         await testPool.end();
       }
@@ -261,7 +333,7 @@ async function runSimulation() {
     }
 
     console.log("\n================================================================================");
-    console.log("✅ ALL SIMULATION CHECKS PASSED: Zero data loss, seamless upgrade & admin access!");
+    console.log("✅ ALL SIMULATION CHECKS PASSED: Zero data loss, advisory lock verified, status normalized!");
     console.log("================================================================================");
   } finally {
     client.release();

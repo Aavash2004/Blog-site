@@ -1,7 +1,5 @@
-"use client";
-
 import Link from "next/link";
-import { Handshake, CameraIcon } from "lucide-react";
+import { CameraIcon } from "lucide-react";
 
 export function Footer() {
   return (

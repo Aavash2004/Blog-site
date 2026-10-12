@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Code, ShieldCheck, Zap, Handshake, Sun, Cloud, CloudRain, Clock, Utensils, Camera } from "lucide-react";
+import { ArrowRight, Zap, Handshake, Sun, Cloud, CloudRain, Clock, Utensils, Camera } from "lucide-react";
 import { useState, useEffect } from "react";
 
 const photos = [

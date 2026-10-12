@@ -2,10 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
-  Palette,
-  Code2,
-  LifeBuoy,
-  Sparkles,Mountain, Landmark, Utensils
+  Mountain,
+  Landmark,
+  Utensils,
 } from "lucide-react";
 
 const services = [

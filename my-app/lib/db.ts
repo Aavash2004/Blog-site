@@ -41,7 +41,194 @@ export async function query(text: string, params?: unknown[]) {
   }
 }
 
-async function initDb(): Promise<boolean> {
+export const DB_MIGRATION_LOCK_KEY = 74829104;
+
+export async function runMigrationsOnClient(client: {
+  query: (
+    text: string,
+    params?: unknown[]
+  ) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+}): Promise<boolean> {
+  // Helper for resilient schema updates: logs harmless discrepancies instead of crashing the app
+  const safeRun = async (label: string, sql: string) => {
+    try {
+      await client.query(sql);
+    } catch (stepError) {
+      console.warn(`[initDb] Notice during schema step "${label}": ${(stepError as Error).message}`);
+    }
+  };
+
+  // 1. Users Table
+  await safeRun(
+    "Create users table",
+    `CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+      username VARCHAR(50) UNIQUE,
+      phone VARCHAR(20),
+      address TEXT,
+      avatar_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`
+  );
+
+  // Safe column migrations for existing users table
+  await safeRun(
+    "Add users.role",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';`
+  );
+  await safeRun(
+    "Add users.username",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50);`
+  );
+  await safeRun(
+    "Add users.phone",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`
+  );
+  await safeRun(
+    "Add users.address",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;`
+  );
+  await safeRun(
+    "Add users.avatar_url",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`
+  );
+  await safeRun(
+    "Add users.created_at",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
+  );
+
+  // 2. Posts Table
+  await safeRun(
+    "Create posts table",
+    `CREATE TABLE IF NOT EXISTS posts (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      slug VARCHAR(255) UNIQUE NOT NULL,
+      excerpt TEXT NOT NULL,
+      content TEXT NOT NULL,
+      featured_image TEXT,
+      category VARCHAR(100) NOT NULL,
+      status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED')),
+      author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`
+  );
+
+  // Safe column migrations for existing posts table
+  await safeRun(
+    "Add posts.author_id",
+    `ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
+  );
+  await safeRun(
+    "Add posts.updated_at",
+    `ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
+  );
+
+  // 3. Activity Log Table
+  await safeRun(
+    "Create activity_log table",
+    `CREATE TABLE IF NOT EXISTS activity_log (
+      id SERIAL PRIMARY KEY,
+      action VARCHAR(50) NOT NULL,
+      description TEXT NOT NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`
+  );
+
+  // Safe column migrations for existing activity_log table
+  await safeRun(
+    "Add activity_log.user_id",
+    `ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
+  );
+
+  // Safe backfill for existing records
+  await safeRun(
+    "Backfill null user roles",
+    `UPDATE users SET role = 'user' WHERE role IS NULL;`
+  );
+  await safeRun(
+    "Backfill null post updated_at",
+    `UPDATE posts SET updated_at = created_at WHERE updated_at IS NULL;`
+  );
+  await safeRun(
+    "Backfill null post status",
+    `UPDATE posts SET status = 'DRAFT' WHERE status IS NULL;`
+  );
+
+  // Safe normalization of post status casing:
+  // Legacy datasets or hand-crafted entries may have stored lowercase or mixed-case status
+  // strings ('published', 'draft', etc.). Application queries strictly filter for
+  // status = 'PUBLISHED', which would silently hide lowercase published posts from public views.
+  // Note: We do NOT add CHECK constraints to existing tables unless existing data satisfies them.
+  await safeRun(
+    "Normalize post status casing",
+    `UPDATE posts 
+     SET status = UPPER(status) 
+     WHERE status IN ('published', 'draft', 'Published', 'Draft');`
+  );
+
+  // 4. Indexes
+  await safeRun(
+    "Create idx_posts_slug",
+    `CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);`
+  );
+  await safeRun(
+    "Create idx_posts_status",
+    `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);`
+  );
+  await safeRun(
+    "Create idx_activity_created",
+    `CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC);`
+  );
+
+  // 5. Verification step: verify every required column exists
+  const colCheckResult = await client.query(`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_name IN ('users', 'posts', 'activity_log');
+  `);
+  const existingCols = new Set(
+    colCheckResult.rows.map(
+      (r) => `${(r as { table_name: string; column_name: string }).table_name}.${(r as { table_name: string; column_name: string }).column_name}`
+    )
+  );
+
+  const requiredCols = [
+    "users.role",
+    "users.username",
+    "users.phone",
+    "users.address",
+    "users.avatar_url",
+    "posts.author_id",
+    "posts.updated_at",
+    "posts.status",
+    "posts.slug",
+    "posts.category",
+    "activity_log.user_id",
+  ];
+
+  const missingCols = requiredCols.filter((col) => !existingCols.has(col));
+  if (missingCols.length > 0) {
+    const errMsg = `Critical database migration verification failure: Missing required column(s): ${missingCols.join(", ")}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(errMsg);
+    } else {
+      console.error(`[initDb] ⚠️ ${errMsg}`);
+    }
+  }
+
+  return true;
+}
+
+export async function initDb(customPool?: Pool): Promise<boolean> {
+  const targetPool = customPool || getPool();
+
   if (!process.env.DATABASE_URL) {
     if (process.env.NODE_ENV === "production") {
       throw new Error("DATABASE_URL is not set in production environment");
@@ -52,8 +239,10 @@ async function initDb(): Promise<boolean> {
   }
 
   // 1. Connectivity test: MUST throw in production if database is unreachable
+  let client;
   try {
-    await query("SELECT 1");
+    client = await targetPool.connect();
+    await client.query("SELECT 1");
   } catch (connError) {
     const errorMsg = `Postgres unavailable in production environment: ${(connError as Error).message}`;
     if (process.env.NODE_ENV === "production") {
@@ -63,134 +252,17 @@ async function initDb(): Promise<boolean> {
     throw connError;
   }
 
-  // Helper for resilient schema updates: logs harmless discrepancies instead of crashing the app
-  const safeRun = async (label: string, sql: string) => {
-    try {
-      await query(sql);
-    } catch (stepError) {
-      console.warn(`[initDb] Notice during schema step "${label}": ${(stepError as Error).message}`);
-    }
-  };
-
   try {
-    // 1. Users Table
-    await safeRun(
-      "Create users table",
-      `CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100) NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-        username VARCHAR(50) UNIQUE,
-        phone VARCHAR(20),
-        address TEXT,
-        avatar_url TEXT,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );`
-    );
+    // 2. Wrap migration in pg_advisory_lock so concurrent cold starts run one at a time
+    await client.query("SELECT pg_advisory_lock($1)", [DB_MIGRATION_LOCK_KEY]);
 
-    // Safe column migrations for existing users table
-    await safeRun(
-      "Add users.role",
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';`
-    );
-    await safeRun(
-      "Add users.username",
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50);`
-    );
-    await safeRun(
-      "Add users.phone",
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`
-    );
-    await safeRun(
-      "Add users.address",
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;`
-    );
-    await safeRun(
-      "Add users.avatar_url",
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`
-    );
-    await safeRun(
-      "Add users.created_at",
-      `ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
-    );
-
-    // 2. Posts Table
-    await safeRun(
-      "Create posts table",
-      `CREATE TABLE IF NOT EXISTS posts (
-        id SERIAL PRIMARY KEY,
-        title VARCHAR(255) NOT NULL,
-        slug VARCHAR(255) UNIQUE NOT NULL,
-        excerpt TEXT NOT NULL,
-        content TEXT NOT NULL,
-        featured_image TEXT,
-        category VARCHAR(100) NOT NULL,
-        status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED')),
-        author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );`
-    );
-
-    // Safe column migrations for existing posts table
-    await safeRun(
-      "Add posts.author_id",
-      `ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
-    );
-    await safeRun(
-      "Add posts.updated_at",
-      `ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
-    );
-
-    // 3. Activity Log Table
-    await safeRun(
-      "Create activity_log table",
-      `CREATE TABLE IF NOT EXISTS activity_log (
-        id SERIAL PRIMARY KEY,
-        action VARCHAR(50) NOT NULL,
-        description TEXT NOT NULL,
-        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );`
-    );
-
-    // Safe column migrations for existing activity_log table
-    await safeRun(
-      "Add activity_log.user_id",
-      `ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
-    );
-
-    // Safe backfill for existing records
-    await safeRun(
-      "Backfill null user roles",
-      `UPDATE users SET role = 'user' WHERE role IS NULL;`
-    );
-    await safeRun(
-      "Backfill null post updated_at",
-      `UPDATE posts SET updated_at = created_at WHERE updated_at IS NULL;`
-    );
-    await safeRun(
-      "Backfill null post status",
-      `UPDATE posts SET status = 'DRAFT' WHERE status IS NULL;`
-    );
-
-    // 4. Indexes
-    await safeRun(
-      "Create idx_posts_slug",
-      `CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);`
-    );
-    await safeRun(
-      "Create idx_posts_status",
-      `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);`
-    );
-    await safeRun(
-      "Create idx_activity_created",
-      `CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC);`
-    );
-
-    return true;
+    try {
+      return await runMigrationsOnClient(client);
+    } finally {
+      await client.query("SELECT pg_advisory_unlock($1)", [DB_MIGRATION_LOCK_KEY]).catch((unlockErr) => {
+        console.warn("[initDb] Notice releasing advisory lock:", unlockErr);
+      });
+    }
   } catch (error) {
     if (process.env.NODE_ENV === "production") {
       throw new Error(
@@ -199,11 +271,17 @@ async function initDb(): Promise<boolean> {
     }
     console.error("Database initialization failed:", error);
     throw error;
+  } finally {
+    client.release();
   }
 }
 
 // Single-flight memoized DB readiness check
 let dbReadyPromise: Promise<boolean> | null = null;
+
+export function resetDbReadyPromise(): void {
+  dbReadyPromise = null;
+}
 
 export function ensureDb(): Promise<boolean> {
   if (!dbReadyPromise) {

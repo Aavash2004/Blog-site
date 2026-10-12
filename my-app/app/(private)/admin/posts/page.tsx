@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  fetchCurrentUser,
-  type StoredUser,
-} from "@/app/lib/auth-client";
+import { fetchCurrentUser } from "@/app/lib/auth-client";
 
 import {
   FileText,
@@ -16,7 +13,6 @@ import {
   Trash2,
   Eye,
   CheckCircle2,
-  Clock3,
   FileEdit,
   ListOrdered,
 } from "lucide-react";
@@ -64,7 +60,6 @@ export default function BlogsPage() {
   const router = useRouter();
 
   const [checked, setChecked] = useState(false);
-  const [user, setUser] = useState<StoredUser | null>(null);
 
   const [posts, setPosts] = useState<ApiPost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -118,7 +113,6 @@ export default function BlogsPage() {
         return;
       }
 
-      setUser(u);
       setChecked(true);
       fetchPosts();
     });

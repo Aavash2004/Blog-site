@@ -1,6 +1,5 @@
-﻿"use client";
+"use client";
 
-import Image from "next/image";
 import { useState } from "react";
 import { Mail, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
