@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getAllPosts, createPost, isSlugTaken } from "@/lib/db";
-import { verifyToken } from "@/app/lib/auth-server";
+import { getAllPosts, getPublishedPosts, getPostsForUser, createPost, isSlugTaken } from "@/lib/db";
+import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 import { logActivity } from "@/lib/db";
+import { cleanHtml } from "@/lib/sanitize";
 
 const createPostSchema = z.object({
   title: z.string().trim().min(1, "Title is required.").max(255, "Title is too long."),
@@ -22,13 +23,20 @@ const createPostSchema = z.object({
 });
 
 export async function GET(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
-  if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const payload = verifyToken(request);
 
   try {
-    const posts = await getAllPosts();
+    if (!payload) {
+      const posts = await getPublishedPosts();
+      return NextResponse.json({ posts }, { status: 200 });
+    }
+
+    if (payload.role === "admin") {
+      const posts = await getAllPosts();
+      return NextResponse.json({ posts }, { status: 200 });
+    }
+
+    const posts = await getPostsForUser(payload.userId);
     return NextResponse.json({ posts }, { status: 200 });
   } catch (error) {
     console.error("Get posts error:", error);
@@ -37,7 +45,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -72,7 +84,7 @@ export async function POST(request: NextRequest) {
       title: parsed.data.title,
       slug: parsed.data.slug,
       excerpt: parsed.data.excerpt,
-      content: parsed.data.content,
+      content: cleanHtml(parsed.data.content),
       featuredImage: parsed.data.featuredImage || undefined,
       category: parsed.data.category,
       status: parsed.data.status,

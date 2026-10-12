@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 import { updateUserAvatar } from "@/lib/db";
-import { verifyToken } from "@/app/lib/auth-server";
+import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -10,7 +10,11 @@ cloudinary.config({
 });
 
 export async function PATCH(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

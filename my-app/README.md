@@ -1,36 +1,53 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Our Nepal
+
+A modern full-stack web application for stories, culture, travel, and experiences across Nepal. Built with Next.js 16 App Router, React 19, TypeScript, Tailwind CSS v4, and PostgreSQL.
 
 ## Getting Started
 
-First, run the development server:
+### 1. Database Setup
+
+This project uses PostgreSQL (via Neon in production or Docker Compose locally).
+
+To start a local PostgreSQL database using Docker:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+This will run PostgreSQL on `localhost:5432` with database `ournepal_db`, user `postgres`, and password `postgrespassword`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Configure your `.env.local`:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+DATABASE_URL=postgresql://postgres:postgrespassword@localhost:5432/ournepal_db
+```
 
-## Learn More
+### 2. Environment Variables
 
-To learn more about Next.js, take a look at the following resources:
+Copy `.env.example` to `.env.local` and configure your credentials:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cp .env.example .env.local
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Required variables:
+- `DATABASE_URL`: PostgreSQL connection string (Neon or local Docker).
+- `JWT_SECRET`: Minimum 32-character secret for signing session tokens.
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: For image uploads.
 
-## Deploy on Vercel
+### 3. Run the Development Server
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+pnpm dev
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
+
+## Admin Bootstrap
+
+To promote an existing registered user to `admin`, run the seed script:
+
+```bash
+pnpm run seed:admin <email>
+```
+

@@ -7,9 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RichTextEditor from "@/components/admin/RichTextEditor";
 
-import { getToken } from "@/app/lib/auth-client";
-
-
 interface PostFormData {
   title: string;
   slug: string;
@@ -41,11 +38,7 @@ export default function EditPostPage() {
   useEffect(() => {
     const fetchPost = async () => {
       try {
-        const response = await fetch(`/api/admin/posts/${id}`, {
-          headers: {
-            Authorization: `Bearer ${getToken()}`,
-          },
-        });
+        const response = await fetch(`/api/admin/posts/${id}`);
 
         const data = await response.json();
 
@@ -109,7 +102,6 @@ try {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify(payload),
       });

@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  getToken,
-  getUser,
+  fetchCurrentUser,
   type StoredUser,
 } from "@/app/lib/auth-client";
 
@@ -17,29 +16,13 @@ import { Button } from "@/components/ui/button";
 
 export default function DashboardPage() {
   const router = useRouter();
-
-  const [checked, setChecked] = useState(false);
   const [user, setUser] = useState<StoredUser | null>(null);
 
   useEffect(() => {
-    const token = getToken();
-
-    if (!token) {
-      router.replace("/auth/login");
-      return;
-    }
-
-    setUser(getUser());
-    setChecked(true);
-  }, [router]);
-
-  if (!checked) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-        <p className="text-sm text-zinc-500">Loading...</p>
-      </main>
-    );
-  }
+    fetchCurrentUser().then((u) => {
+      if (u) setUser(u);
+    });
+  }, []);
 
   const initials =
     user?.name

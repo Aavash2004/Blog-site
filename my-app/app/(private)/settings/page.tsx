@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
-import { getToken, getUser, setUser, clearToken, clearUser, type StoredUser } from "@/app/lib/auth-client";
+import { fetchCurrentUser, logout, setCurrentUser, type StoredUser } from "@/app/lib/auth-client";
 import { Toast, ToastViewport } from "@/components/ui/toast";
 import {
   Lock,
@@ -95,13 +95,14 @@ export default function SettingsPage() {
   };
 
   useEffect(() => {
-    const u = getUser();
-    setStoredUser(u);
-    if (u) {
-      setUsername(u.username || "");
-      setPhone(u.phone || "");
-      setAddress(u.address || "");
-    }
+    fetchCurrentUser().then((u) => {
+      if (u) {
+        setStoredUser(u);
+        setUsername(u.username || "");
+        setPhone(u.phone || "");
+        setAddress(u.address || "");
+      }
+    });
   }, []);
 
   const handleSaveContact = async (e: React.FormEvent) => {
@@ -125,7 +126,6 @@ export default function SettingsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify({
           username: result.data.username,
@@ -142,7 +142,7 @@ export default function SettingsPage() {
       }
 
       if (data.user) {
-        setUser(data.user);
+        setCurrentUser(data.user);
         setStoredUser(data.user);
       }
 
@@ -174,7 +174,6 @@ export default function SettingsPage() {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
         body: JSON.stringify({
           currentPassword: result.data.currentPassword,
@@ -211,7 +210,6 @@ export default function SettingsPage() {
 
       const response = await fetch("/api/me/avatar", {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${getToken()}` },
         body: formData,
       });
 
@@ -223,7 +221,7 @@ export default function SettingsPage() {
       }
 
       if (data.user) {
-        setUser(data.user);
+        setCurrentUser(data.user);
         setStoredUser(data.user);
       }
 
@@ -242,7 +240,6 @@ export default function SettingsPage() {
     try {
       const response = await fetch("/api/me", {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
       });
 
       const data = await response.json();
@@ -254,9 +251,9 @@ export default function SettingsPage() {
         return;
       }
 
-      clearToken();
-      clearUser();
+      await logout();
       router.push("/");
+      router.refresh();
     } catch {
       setToast({ message: "Unable to reach the server right now.", type: "error" });
       setDeleting(false);

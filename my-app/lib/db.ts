@@ -1,70 +1,38 @@
 import { Pool } from "pg";
 import bcrypt from "bcryptjs";
 import dotenv from "dotenv";
-import fs from "fs/promises";
 import path from "path";
 
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
 dotenv.config();
 
-type UserRecord = {
+export type UserRecord = {
   id: number;
   name: string;
   email: string;
   password: string;
+  role: "user" | "admin";
   username?: string | null;
   phone?: string | null;
   address?: string | null;
   created_at?: string;
   avatar_url?: string | null;
-  role: "user"| "admin";
 };
 
-type SafeUser = Omit<UserRecord, "password">;
+export type SafeUser = Omit<UserRecord, "password">;
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
-
-const fallbackStoragePath = path.join(process.cwd(), ".data", "users.json");
-let fallbackUsers: UserRecord[] = [];
-let fallbackIdCounter = 1;
-let fallbackUsersLoaded = false;
-let fallbackUsersLoadPromise: Promise<void> | null = null;
-
-async function ensureFallbackUsersLoaded() {
-  if (fallbackUsersLoaded) return;
-
-  if (!fallbackUsersLoadPromise) {
-    fallbackUsersLoadPromise = (async () => {
-      try {
-        await fs.mkdir(path.dirname(fallbackStoragePath), { recursive: true });
-        const raw = await fs.readFile(fallbackStoragePath, "utf8");
-        const parsed = JSON.parse(raw) as Partial<UserRecord>[];
-
-        fallbackUsers = parsed.filter((user): user is UserRecord => Boolean(user?.id && user?.email && user?.password));
-        fallbackIdCounter = fallbackUsers.reduce((max, user) => Math.max(max, user.id), 0) + 1;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        if (code !== "ENOENT") {
-          console.warn("Unable to load fallback users from disk.", error);
-        }
-        fallbackUsers = [];
-        fallbackIdCounter = 1;
-      } finally {
-        fallbackUsersLoaded = true;
-      }
-    })();
+let poolInstance: Pool | null = null;
+function getPool(): Pool {
+  if (!poolInstance) {
+    poolInstance = new Pool({
+      connectionString: process.env.DATABASE_URL,
+    });
   }
-
-  await fallbackUsersLoadPromise;
-}
-
-async function saveFallbackUsers() {
-  await fs.mkdir(path.dirname(fallbackStoragePath), { recursive: true });
-  await fs.writeFile(fallbackStoragePath, JSON.stringify(fallbackUsers, null, 2), "utf8");
+  return poolInstance;
 }
 
 export async function query(text: string, params?: unknown[]) {
+  const pool = getPool();
   const client = await pool.connect();
   try {
     return await client.query(text, params);
@@ -73,118 +41,358 @@ export async function query(text: string, params?: unknown[]) {
   }
 }
 
-async function initDb(): Promise<boolean> {
+export const DB_MIGRATION_LOCK_KEY = 74829104;
+
+export async function runMigrationsOnClient(client: {
+  query: (
+    text: string,
+    params?: unknown[]
+  ) => Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
+}): Promise<boolean> {
+  let stepIndex = 0;
+  // Helper for resilient schema updates within a transaction:
+  // Wraps each step in a SAVEPOINT so that harmless discrepancies do not abort the outer transaction block
+  const safeRun = async (label: string, sql: string) => {
+    stepIndex++;
+    const savepointName = `sp_mig_${stepIndex}`;
+    try {
+      await client.query(`SAVEPOINT ${savepointName};`);
+      await client.query(sql);
+      await client.query(`RELEASE SAVEPOINT ${savepointName};`);
+    } catch (stepError) {
+      await client.query(`ROLLBACK TO SAVEPOINT ${savepointName};`).catch(() => {});
+      console.warn(`[initDb] Notice during schema step "${label}": ${(stepError as Error).message}`);
+    }
+  };
+
+  // 1. Users Table
+  await safeRun(
+    "Create users table",
+    `CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(100) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      password VARCHAR(255) NOT NULL,
+      role VARCHAR(20) DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+      username VARCHAR(50) UNIQUE,
+      phone VARCHAR(20),
+      address TEXT,
+      avatar_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`
+  );
+
+  // Safe column migrations for existing users table
+  await safeRun(
+    "Add users.role",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user';`
+  );
+  await safeRun(
+    "Add users.username",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(50);`
+  );
+  await safeRun(
+    "Add users.phone",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`
+  );
+  await safeRun(
+    "Add users.address",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;`
+  );
+  await safeRun(
+    "Add users.avatar_url",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;`
+  );
+  await safeRun(
+    "Add users.created_at",
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
+  );
+
+  // 2. Posts Table
+  await safeRun(
+    "Create posts table",
+    `CREATE TABLE IF NOT EXISTS posts (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      slug VARCHAR(255) UNIQUE NOT NULL,
+      excerpt TEXT NOT NULL,
+      content TEXT NOT NULL,
+      featured_image TEXT,
+      category VARCHAR(100) NOT NULL,
+      status VARCHAR(20) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED')),
+      author_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`
+  );
+
+  // Safe column migrations for existing posts table
+  await safeRun(
+    "Add posts.author_id",
+    `ALTER TABLE posts ADD COLUMN IF NOT EXISTS author_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
+  );
+  await safeRun(
+    "Add posts.updated_at",
+    `ALTER TABLE posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;`
+  );
+
+  // 3. Activity Log Table
+  await safeRun(
+    "Create activity_log table",
+    `CREATE TABLE IF NOT EXISTS activity_log (
+      id SERIAL PRIMARY KEY,
+      action VARCHAR(50) NOT NULL,
+      description TEXT NOT NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );`
+  );
+
+  // Safe column migrations for existing activity_log table
+  await safeRun(
+    "Add activity_log.user_id",
+    `ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;`
+  );
+
+  // Safe backfill for existing records
+  await safeRun(
+    "Backfill null user roles",
+    `UPDATE users SET role = 'user' WHERE role IS NULL;`
+  );
+  await safeRun(
+    "Backfill null post updated_at",
+    `UPDATE posts SET updated_at = created_at WHERE updated_at IS NULL;`
+  );
+  await safeRun(
+    "Backfill null post status",
+    `UPDATE posts SET status = 'DRAFT' WHERE status IS NULL;`
+  );
+
+  // Safe normalization of post status casing:
+  // Legacy datasets or hand-crafted entries may have stored lowercase or mixed-case status
+  // strings ('published', 'draft', etc.). Application queries strictly filter for
+  // status = 'PUBLISHED', which would silently hide lowercase published posts from public views.
+  // Note: We do NOT add CHECK constraints to existing tables unless existing data satisfies them.
+  await safeRun(
+    "Normalize post status casing",
+    `UPDATE posts 
+     SET status = UPPER(status) 
+     WHERE status IN ('published', 'draft', 'Published', 'Draft');`
+  );
+
+  // 4. Indexes
+  await safeRun(
+    "Create idx_posts_slug",
+    `CREATE INDEX IF NOT EXISTS idx_posts_slug ON posts(slug);`
+  );
+  await safeRun(
+    "Create idx_posts_status",
+    `CREATE INDEX IF NOT EXISTS idx_posts_status ON posts(status);`
+  );
+  await safeRun(
+    "Create idx_activity_created",
+    `CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at DESC);`
+  );
+
+  // Conditional LOWER(email) unique index:
+  // Before creating unique index on LOWER(email), check for duplicate lowercased emails.
+  // If duplicates exist, log them loudly and SKIP creating the index so migration does not fail.
+  const dupCheckResult = await client.query(`
+    SELECT LOWER(email) AS lower_email, COUNT(*)::int AS count
+    FROM users
+    GROUP BY LOWER(email)
+    HAVING COUNT(*) > 1;
+  `);
+
+  if (dupCheckResult.rows && dupCheckResult.rows.length > 0) {
+    console.warn(
+      `[initDb] ⚠️ Duplicate lowercased emails detected in users table (${dupCheckResult.rows.length} groups). Skipping creation of 'users_email_lower_key' unique index to prevent migration abort:`,
+      dupCheckResult.rows
+    );
+  } else {
+    await safeRun(
+      "Create unique index on LOWER(email)",
+      `CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_key ON users (LOWER(email));`
+    );
+  }
+
+  // 5. Verification step: verify every required column exists
+  const colCheckResult = await client.query(`
+    SELECT table_name, column_name
+    FROM information_schema.columns
+    WHERE table_name IN ('users', 'posts', 'activity_log');
+  `);
+  const existingCols = new Set(
+    colCheckResult.rows.map(
+      (r) => `${(r as { table_name: string; column_name: string }).table_name}.${(r as { table_name: string; column_name: string }).column_name}`
+    )
+  );
+
+  const requiredCols = [
+    "users.role",
+    "users.username",
+    "users.phone",
+    "users.address",
+    "users.avatar_url",
+    "posts.author_id",
+    "posts.updated_at",
+    "posts.status",
+    "posts.slug",
+    "posts.category",
+    "activity_log.user_id",
+  ];
+
+  const missingCols = requiredCols.filter((col) => !existingCols.has(col));
+  if (missingCols.length > 0) {
+    const errMsg = `Critical database migration verification failure: Missing required column(s): ${missingCols.join(", ")}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(errMsg);
+    } else {
+      console.error(`[initDb] ⚠️ ${errMsg}`);
+    }
+  }
+
+  return true;
+}
+
+export interface InitDbOptions {
+  artificialDelaySeconds?: number;
+  poolLabel?: string;
+  onLockAcquired?: (label: string, timestamp: string) => void;
+  onLockReleased?: (label: string, timestamp: string) => void;
+}
+
+export async function initDb(
+  customPool?: Pool,
+  options?: InitDbOptions
+): Promise<boolean> {
+  const targetPool = customPool || getPool();
+  const label = options?.poolLabel || "initDb";
+
   if (!process.env.DATABASE_URL) {
     if (process.env.NODE_ENV === "production") {
       throw new Error("DATABASE_URL is not set in production environment");
     }
-    return false;
+    throw new Error(
+      "DATABASE_URL is not set. Please configure it in .env.local or run 'docker compose up -d' for local development."
+    );
+  }
+
+  // 1. Connectivity test: MUST throw in production if database is unreachable
+  let client;
+  try {
+    client = await targetPool.connect();
+    await client.query("SELECT 1");
+  } catch (connError) {
+    const errorMsg = `Postgres unavailable in production environment: ${(connError as Error).message}`;
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(errorMsg);
+    }
+    console.error("Database connection failed:", connError);
+    throw connError;
   }
 
   try {
-    await query("SELECT 1");
-    await query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(100),
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    // 2. Single transaction with transaction-level advisory lock (pg_advisory_xact_lock)
+    // Reliable in Neon's PgBouncer transaction mode: automatically released at COMMIT or ROLLBACK
+    await client.query("BEGIN;");
+    await client.query("SELECT pg_advisory_xact_lock($1);", [DB_MIGRATION_LOCK_KEY]);
+
+    const acquiredTimestamp = new Date().toISOString();
+    console.log(`  [${label}] Advisory lock acquired at ${acquiredTimestamp}`);
+    if (options?.onLockAcquired) {
+      options.onLockAcquired(label, acquiredTimestamp);
+    }
+
+    if (options?.artificialDelaySeconds && options.artificialDelaySeconds > 0) {
+      console.log(`  [${label}] Artificial delay: sleeping for ${options.artificialDelaySeconds}s inside lock...`);
+      await client.query(`SELECT pg_sleep(${options.artificialDelaySeconds});`);
+    }
+
+    await runMigrationsOnClient(client);
+
+    await client.query("COMMIT;");
+    const releasedTimestamp = new Date().toISOString();
+    console.log(`  [${label}] Advisory lock released (committed) at ${releasedTimestamp}`);
+    if (options?.onLockReleased) {
+      options.onLockReleased(label, releasedTimestamp);
+    }
+
     return true;
   } catch (error) {
-    console.warn("Postgres unavailable, using fallback storage.", error);
+    await client.query("ROLLBACK;").catch(() => {});
+    const rollbackTimestamp = new Date().toISOString();
+    console.log(`  [${label}] Advisory lock released (rolled back) at ${rollbackTimestamp}`);
+    if (options?.onLockReleased) {
+      options.onLockReleased(label, rollbackTimestamp);
+    }
+
     if (process.env.NODE_ENV === "production") {
-      // In production we do not want a silent fallback to file storage.
       throw new Error(
         `Postgres unavailable in production environment: ${(error as Error).message}`
       );
     }
-    return false;
+    console.error("Database initialization failed:", error);
+    throw error;
+  } finally {
+    client.release();
   }
 }
 
-// Cache the DB-readiness check so it only actually runs once per server
-// process, instead of on every single request.
+// Single-flight memoized DB readiness check
 let dbReadyPromise: Promise<boolean> | null = null;
+
+export function resetDbReadyPromise(): void {
+  dbReadyPromise = null;
+}
 
 export function ensureDb(): Promise<boolean> {
   if (!dbReadyPromise) {
-    dbReadyPromise = initDb();
+    dbReadyPromise = initDb().catch((err) => {
+      dbReadyPromise = null;
+      throw err;
+    });
   }
   return dbReadyPromise;
 }
 
 function stripPassword(user: UserRecord): SafeUser {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { password: _password, ...safeUser } = user;
   return safeUser;
 }
 
 export async function createUserRecord(name: string, email: string, password: string) {
-  const isDbReady = await ensureDb();
+  await ensureDb();
+  const normalizedEmail = email.trim().toLowerCase();
   const hashedPassword = await bcrypt.hash(password, 12);
+  const role = "user" as const;
 
-  if (!isDbReady) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Database not available in production; fallback storage disabled.");
-    }
-
-    await ensureFallbackUsersLoaded();
-
-    if (fallbackUsers.some((user) => user.email === email)) {
-      return { success: false, duplicate: true, fallback: true } as const;
-    }
-
-    const newUser: UserRecord = {
-      id: fallbackIdCounter++,
-      name,
-      email,
-      password: hashedPassword,
-      role: "user",
-      
-    };
-    fallbackUsers.push(newUser);
-    await saveFallbackUsers();
-
-    return { success: true, fallback: true, user: stripPassword(newUser) } as const;
-  }
-
-  const existing = await query("SELECT 1 FROM users WHERE email = $1", [email]);
+  const existing = await query("SELECT 1 FROM users WHERE LOWER(email) = $1", [normalizedEmail]);
   if (existing.rowCount && existing.rowCount > 0) {
-    return { success: false, duplicate: true, fallback: false } as const;
+    return { success: false, duplicate: true } as const;
   }
 
-  const result = await query(
-    "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id, name, email",
-    [name, email, hashedPassword]
-  );
+  try {
+    const result = await query(
+      `INSERT INTO users (name, email, password, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, name, email, role, username, phone, address, avatar_url, created_at`,
+      [name, normalizedEmail, hashedPassword, role]
+    );
 
-  return { success: true, fallback: false, user: result.rows[0] as SafeUser } as const;
+    return { success: true, user: result.rows[0] as SafeUser } as const;
+  } catch (err: unknown) {
+    // Catch PostgreSQL unique_violation error code 23505 (e.g. race conditions during signup)
+    if ((err as { code?: string })?.code === "23505") {
+      return { success: false, duplicate: true } as const;
+    }
+    throw err;
+  }
 }
 
-
-
 export async function updateUserPassword(userId: number, currentPassword: string, newPassword: string) {
-  const isDbReady = await ensureDb();
-
-  if (!isDbReady) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Database not available in production; fallback storage disabled.");
-    }
-
-    await ensureFallbackUsersLoaded();
-    const user = fallbackUsers.find((u) => u.id === userId);
-    if (!user) return { success: false, error: "User not found" } as const;
-
-    const matches = await bcrypt.compare(currentPassword, user.password);
-    if (!matches) return { success: false, error: "Current password is incorrect" } as const;
-
-    user.password = await bcrypt.hash(newPassword, 12);
-    await saveFallbackUsers();
-
-    return { success: true } as const;
-  }
+  await ensureDb();
 
   const result = await query("SELECT * FROM users WHERE id = $1", [userId]);
   const user = result.rows[0] as UserRecord | undefined;
@@ -200,22 +408,7 @@ export async function updateUserPassword(userId: number, currentPassword: string
 }
 
 export async function deleteUserAccount(userId: number) {
-  const isDbReady = await ensureDb();
-
-  if (!isDbReady) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Database not available in production; fallback storage disabled.");
-    }
-
-    await ensureFallbackUsersLoaded();
-    const index = fallbackUsers.findIndex((u) => u.id === userId);
-    if (index === -1) return { success: false, error: "User not found" } as const;
-
-    fallbackUsers.splice(index, 1);
-    await saveFallbackUsers();
-
-    return { success: true } as const;
-  }
+  await ensureDb();
 
   const result = await query("DELETE FROM users WHERE id = $1", [userId]);
   if (result.rowCount === 0) {
@@ -225,90 +418,98 @@ export async function deleteUserAccount(userId: number) {
   return { success: true } as const;
 }
 
-export async function findUserByEmailAndPassword(
-  email: string,
-  password: string
-) {
+export async function findUserByEmailAndPassword(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  const isDbReady = await ensureDb();
-
-  if (!isDbReady) {
-    await ensureFallbackUsersLoaded();
-
-    const user = fallbackUsers.find(
-      (entry) => entry.email === normalizedEmail
-    );
-
-    if (!user) return null;
-
-    const passwordMatches = await bcrypt.compare(
-      password,
-      user.password
-    );
-
-    if (!passwordMatches) return null;
-
-    return {
-      ...stripPassword(user),
-      fallback: true,
-    };
-  }
+  await ensureDb();
 
   const result = await query(
-    "SELECT * FROM users WHERE email = $1 LIMIT 1",
+    "SELECT * FROM users WHERE LOWER(email) = $1 LIMIT 1",
     [normalizedEmail]
   );
 
   const user = result.rows[0] as UserRecord | undefined;
-
   if (!user) return null;
 
-  const passwordMatches = await bcrypt.compare(
-    password,
-    user.password
-  );
-
+  const passwordMatches = await bcrypt.compare(password, user.password);
   if (!passwordMatches) return null;
 
-  return {
-    ...stripPassword(user),
-    fallback: false,
-  };
+  return stripPassword(user);
 }
-export async function findUserById(userId: number) {
-  const isDbReady = await ensureDb();
 
-  if (!isDbReady) {
-    await ensureFallbackUsersLoaded();
-    const user = fallbackUsers.find((u) => u.id === userId);
-    if (!user) return null;
-    return stripPassword(user);
+/**
+ * Promotes an existing user to admin. Does not create accounts or print password hashes.
+ */
+export async function promoteUserToAdmin(email: string) {
+  await ensureDb();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const result = await query("SELECT * FROM users WHERE LOWER(email) = $1", [normalizedEmail]);
+  const user = result.rows[0] as UserRecord | undefined;
+  if (!user) {
+    return {
+      success: false,
+      error: `No registered user found with email "${email}". The user must create an account first.`,
+    } as const;
   }
 
+  if (user.role === "admin") {
+    return {
+      success: true,
+      alreadyAdmin: true,
+      user: stripPassword(user),
+    } as const;
+  }
+
+  const updateResult = await query(
+    `UPDATE users 
+     SET role = 'admin' 
+     WHERE id = $1 
+     RETURNING id, name, email, role, username, phone, address, avatar_url, created_at`,
+    [user.id]
+  );
+
+  const updatedUser = updateResult.rows[0] as SafeUser;
+
+  await logActivity(
+    "ADMIN_PROMOTED",
+    `User ${updatedUser.email} was promoted to admin via CLI seed script`,
+    updatedUser.id
+  );
+
+  return {
+    success: true,
+    alreadyAdmin: false,
+    user: updatedUser,
+  } as const;
+}
+
+/**
+ * Fetches fresh authenticated user record directly from the database.
+ * Single source of truth for authorization freshness and Phase 2 banned checks.
+ */
+export async function getAuthUserFresh(userId: number): Promise<SafeUser | null> {
+  await ensureDb();
+
   const result = await query(
-    "SELECT id, name, email, username, phone, address, avatar_url, created_at FROM users WHERE id = $1",
+    "SELECT id, name, email, role, username, phone, address, avatar_url, created_at FROM users WHERE id = $1",
     [userId]
   );
-  const user = result.rows[0] as SafeUser | undefined;
-  return user || null;
+  const user = (result.rows[0] as SafeUser | undefined) || null;
+  if (!user) return null;
+
+  // Single hook point for Phase 2: if (user.is_banned) return null;
+  return user;
+}
+
+export async function findUserById(userId: number): Promise<SafeUser | null> {
+  return getAuthUserFresh(userId);
 }
 
 export async function updateUserProfile(userId: number, name: string) {
-  const isDbReady = await ensureDb();
-
-  if (!isDbReady) {
-    await ensureFallbackUsersLoaded();
-    const user = fallbackUsers.find((u) => u.id === userId);
-    if (!user) return { success: false, error: "User not found" } as const;
-
-    user.name = name;
-    await saveFallbackUsers();
-
-    return { success: true, user: stripPassword(user) } as const;
-  }
+  await ensureDb();
 
   const result = await query(
-    "UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, email, created_at",
+    "UPDATE users SET name = $1 WHERE id = $2 RETURNING id, name, email, role, username, phone, address, avatar_url, created_at",
     [name, userId]
   );
 
@@ -325,23 +526,10 @@ export async function updateUserContactInfo(
   phone: string,
   address: string
 ) {
-  const isDbReady = await ensureDb();
-
-  if (!isDbReady) {
-    await ensureFallbackUsersLoaded();
-    const user = fallbackUsers.find((u) => u.id === userId);
-    if (!user) return { success: false, error: "User not found" } as const;
-
-    user.username = username;
-    user.phone = phone;
-    user.address = address;
-    await saveFallbackUsers();
-
-    return { success: true, user: stripPassword(user) } as const;
-  }
+  await ensureDb();
 
   const result = await query(
-    "UPDATE users SET username = $1, phone = $2, address = $3 WHERE id = $4 RETURNING id, name, email, username, phone, address, created_at",
+    "UPDATE users SET username = $1, phone = $2, address = $3 WHERE id = $4 RETURNING id, name, email, role, username, phone, address, avatar_url, created_at",
     [username, phone, address, userId]
   );
 
@@ -351,22 +539,12 @@ export async function updateUserContactInfo(
 
   return { success: true, user: result.rows[0] as SafeUser } as const;
 }
+
 export async function updateUserAvatar(userId: number, avatarUrl: string) {
-  const isDbReady = await ensureDb();
-
-  if (!isDbReady) {
-    await ensureFallbackUsersLoaded();
-    const user = fallbackUsers.find((u) => u.id === userId);
-    if (!user) return { success: false, error: "User not found" } as const;
-
-    user.avatar_url = avatarUrl;
-    await saveFallbackUsers();
-
-    return { success: true, user: stripPassword(user) } as const;
-  }
+  await ensureDb();
 
   const result = await query(
-    "UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING id, name, email, username, phone, address, avatar_url, created_at",
+    "UPDATE users SET avatar_url = $1 WHERE id = $2 RETURNING id, name, email, role, username, phone, address, avatar_url, created_at",
     [avatarUrl, userId]
   );
 
@@ -376,6 +554,8 @@ export async function updateUserAvatar(userId: number, avatarUrl: string) {
 
   return { success: true, user: result.rows[0] as SafeUser } as const;
 }
+
+
 export interface Post {
   id: number;
   title: string;
@@ -391,23 +571,36 @@ export interface Post {
 }
 
 export async function getAllPosts() {
+  await ensureDb();
   const result = await query("SELECT * FROM posts ORDER BY created_at DESC");
   return result.rows as Post[];
 }
 
 export async function getPublishedPosts() {
+  await ensureDb();
   const result = await query(
     "SELECT * FROM posts WHERE status = 'PUBLISHED' ORDER BY created_at DESC"
   );
   return result.rows as Post[];
 }
 
+export async function getPostsForUser(authorId: number) {
+  await ensureDb();
+  const result = await query(
+    "SELECT * FROM posts WHERE status = 'PUBLISHED' OR author_id = $1 ORDER BY created_at DESC",
+    [authorId]
+  );
+  return result.rows as Post[];
+}
+
 export async function getPostById(id: number) {
+  await ensureDb();
   const result = await query("SELECT * FROM posts WHERE id = $1", [id]);
   return (result.rows[0] as Post | undefined) || null;
 }
 
 export async function getPostBySlug(slug: string) {
+  await ensureDb();
   const result = await query(
     "SELECT * FROM posts WHERE slug = $1 AND status = 'PUBLISHED'",
     [slug]
@@ -416,6 +609,7 @@ export async function getPostBySlug(slug: string) {
 }
 
 export async function isSlugTaken(slug: string, excludeId?: number) {
+  await ensureDb();
   if (excludeId) {
     const result = await query(
       "SELECT 1 FROM posts WHERE slug = $1 AND id != $2",
@@ -437,6 +631,7 @@ export async function createPost(data: {
   status: "DRAFT" | "PUBLISHED";
   authorId: number;
 }) {
+  await ensureDb();
   const result = await query(
     `INSERT INTO posts (title, slug, excerpt, content, featured_image, category, status, author_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -467,6 +662,7 @@ export async function updatePost(
     status: "DRAFT" | "PUBLISHED";
   }
 ) {
+  await ensureDb();
   const result = await query(
     `UPDATE posts
      SET title = $1, slug = $2, excerpt = $3, content = $4,
@@ -488,9 +684,11 @@ export async function updatePost(
 }
 
 export async function deletePost(id: number) {
+  await ensureDb();
   const result = await query("DELETE FROM posts WHERE id = $1", [id]);
   return (result.rowCount ?? 0) > 0;
 }
+
 // --- Activity Log ---
 
 export async function logActivity(
@@ -498,6 +696,7 @@ export async function logActivity(
   description: string,
   userId: number | null
 ) {
+  await ensureDb();
   const result = await query(
     `INSERT INTO activity_log (action, description, user_id)
      VALUES ($1, $2, $3)
@@ -508,6 +707,7 @@ export async function logActivity(
 }
 
 export async function getRecentActivity(limit: number = 10) {
+  await ensureDb();
   const result = await query(
     `SELECT id, action, description, user_id, created_at
      FROM activity_log
@@ -519,6 +719,7 @@ export async function getRecentActivity(limit: number = 10) {
 }
 
 export async function getDashboardStats() {
+  await ensureDb();
   const [usersResult, newUsersResult, postsResult, activityResult] =
     await Promise.all([
       query(`SELECT COUNT(*)::int AS count FROM users`),

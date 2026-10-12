@@ -1,28 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { findUserById, updateUserProfile, deleteUserAccount } from "@/lib/db";
-import { verifyToken } from "@/app/lib/auth-server";
+import { getAuthUserFresh, updateUserProfile, deleteUserAccount } from "@/lib/db";
+import { verifyToken, verifyCsrf } from "@/app/lib/auth-server";
 
 const updateProfileSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(100, "Name is too long."),
 });
 
 export async function GET(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  const payload = verifyToken(request);
   if (!payload) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const response = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    response.cookies.delete("auth_token");
+    return response;
   }
 
-  const user = await findUserById(payload.userId);
+  const user = await getAuthUserFresh(payload.userId);
   if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const response = NextResponse.json({ error: "User not found or account removed." }, { status: 401 });
+    response.cookies.delete("auth_token");
+    return response;
   }
 
   return NextResponse.json({ success: true, user }, { status: 200 });
 }
 
 export async function PATCH(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -48,7 +56,11 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const payload = verifyToken(request.headers.get("authorization"));
+  if (!verifyCsrf(request)) {
+    return NextResponse.json({ error: "Invalid request origin (CSRF check failed)." }, { status: 403 });
+  }
+
+  const payload = verifyToken(request);
   if (!payload) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -58,5 +70,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: 404 });
   }
 
-  return NextResponse.json({ success: true }, { status: 200 });
+  const response = NextResponse.json({ success: true }, { status: 200 });
+  response.cookies.delete("auth_token");
+  return response;
 }
