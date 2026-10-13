@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ArrowRight, MapPin, Compass, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, ArrowRight, MapPin } from "lucide-react";
 
 export interface ShowcaseDestination {
   id: string;
@@ -69,17 +69,8 @@ const destinations: ShowcaseDestination[] = [
   },
 ];
 
-const categoryTabs = [
-  "ALL DESTINATIONS",
-  "TREKKING",
-  "HERITAGE",
-  "EXPEDITION",
-  "CULTURE",
-];
-
 export function BlogCoverflowShowcase() {
   const [activeIndex, setActiveIndex] = useState(1);
-  const [selectedCategory, setSelectedCategory] = useState("ALL DESTINATIONS");
 
   const total = destinations.length;
 
@@ -104,7 +95,7 @@ export function BlogCoverflowShowcase() {
   const activeDestination = destinations[activeIndex];
 
   return (
-    <section className="relative w-full overflow-hidden bg-[#0A0D12] text-white py-8 md:py-12 border-b border-stone-800/80">
+    <section className="relative w-full overflow-hidden bg-[#0A0D12] text-white py-10 md:py-16 border-b border-stone-800/80">
       {/* Dynamic Ambient Background Blur mirroring current active image */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-35 dark:opacity-25 transition-all duration-700">
         <Image
@@ -115,55 +106,6 @@ export function BlogCoverflowShowcase() {
           sizes="100vw"
         />
         <div className="absolute inset-0 bg-radial from-transparent via-[#0A0D12]/75 to-[#0A0D12]" />
-      </div>
-
-      {/* Top Header / Sub-Nav Bar */}
-      <div className="relative mx-auto max-w-7xl px-5 md:px-8 mb-6 sm:mb-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-white/10 pb-4">
-          {/* Brand/Subtitle */}
-          <div className="flex items-center gap-2.5">
-            <Compass className="h-5 w-5 text-[#C65D3B]" />
-            <span className="font-heading text-xl font-bold tracking-tight text-white">
-              Expedition Chronicles
-            </span>
-            <span className="hidden sm:inline text-xs text-white/40">•</span>
-            <span className="hidden sm:inline text-xs tracking-widest uppercase text-white/60">
-              Interactive 3D Showcase
-            </span>
-          </div>
-
-          {/* Category Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-1 text-xs font-medium">
-            {categoryTabs.map((tab) => {
-              const isActive = selectedCategory === tab;
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setSelectedCategory(tab)}
-                  className={`relative px-3.5 py-1.5 rounded-full transition-all duration-200 tracking-wider whitespace-nowrap ${
-                    isActive
-                      ? "bg-[#C65D3B] text-white shadow-sm font-semibold"
-                      : "text-white/65 hover:text-white hover:bg-white/5"
-                  }`}
-                >
-                  {tab}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Quick CTA */}
-          <div className="hidden lg:flex items-center gap-3">
-            <Link
-              href="#stories-grid"
-              className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-1.5 text-xs font-medium text-white/90 backdrop-blur-xs transition hover:bg-white/15"
-            >
-              <Search className="h-3.5 w-3.5 text-[#C65D3B]" />
-              <span>Browse All Articles</span>
-            </Link>
-          </div>
-        </div>
       </div>
 
       {/* 3D Coverflow Viewport */}
