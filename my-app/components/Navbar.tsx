@@ -4,11 +4,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
-import { X, Menu, Handshake, Moon, Sun, LogOut } from "lucide-react";
+import { X, Menu, Moon, Sun, BookOpen, User as UserIcon, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { BorderBeam } from "@/components/ui/border-beam";
-import { fetchCurrentUser, logout } from "@/app/lib/auth-client";
-import Image from "next/image";
+import { fetchCurrentUser, logout, StoredUser } from "@/app/lib/auth-client";
+import { UserMenu } from "@/components/UserMenu";
 
 interface NavLink {
   href: string;
@@ -20,7 +19,7 @@ const navLinks: NavLink[] = [
   { href: "/about", label: "About" },
   { href: "/services", label: "Services" },
   { href: "/contact", label: "Contact" },
-  {href: "/blog", label: "Blog"},
+  { href: "/blog", label: "Blog" },
 ];
 
 const TRANSITION_MS = 250;
@@ -39,8 +38,7 @@ export function Navbar() {
   );
 
   // Auth state
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [currentUser, setCurrentUser] = useState<StoredUser | null>(null);
 
   // Mobile drawer states
   const [open, setOpen] = useState(false);
@@ -60,7 +58,7 @@ export function Navbar() {
 
   const handleLogout = async () => {
     await logout();
-    setIsLoggedIn(false);
+    setCurrentUser(null);
     closeDrawer();
     router.push("/auth/login");
     router.refresh();
@@ -69,7 +67,7 @@ export function Navbar() {
   // Handle scroll effect
   useEffect(() => {
     const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
+      setScrolled(window.scrollY > 15);
     };
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
@@ -85,12 +83,9 @@ export function Navbar() {
     setMounted(false);
   }
 
-  // Check auth state on mount and whenever the route changes
-  // (so login/logout redirects immediately reflect in the navbar)
   useEffect(() => {
     fetchCurrentUser().then((user) => {
-      setIsLoggedIn(!!user);
-      setAuthChecked(true);
+      setCurrentUser(user);
     });
   }, [pathname]);
 
@@ -119,46 +114,55 @@ export function Navbar() {
     return null;
   }
 
+  const isDarkMode =
+    themeMounted &&
+    (theme === "dark" || (theme === "system" && resolvedTheme === "dark"));
+
+  const displayName =
+    currentUser?.name?.split(" ")[0] || currentUser?.username || "Aavash";
+
+  const themeToggleLabel = isDarkMode
+    ? "Switch to light mode"
+    : "Switch to dark mode";
+
   return (
     <>
-      <nav
+      <header
         className={cn(
-          "sticky top-0 z-50 w-full transition-all duration-300 px-4 pt-3 sm:px-6",
-          scrolled ? "pt-2" : "pt-4"
+          "sticky top-0 z-50 w-full transition-all duration-300",
+          scrolled
+            ? "border-b border-stone-200/80 bg-[#FAF7F2]/95 backdrop-blur-md dark:border-stone-800 dark:bg-stone-950/95 shadow-xs"
+            : "border-b border-transparent bg-[#FAF7F2] dark:border-transparent dark:bg-stone-950"
         )}
       >
-        <div
-          className={cn(
-            "relative mx-auto flex max-w-6xl items-center justify-between overflow-hidden rounded-full border transition-all duration-300 px-4 py-2.5 sm:px-6",
-            scrolled
-              ? "border-zinc-200/80 bg-white/90 text-zinc-900 shadow-md backdrop-blur-xl ring-1 ring-black/5 dark:border-zinc-700/80 dark:bg-zinc-950/90 dark:text-zinc-100 dark:ring-white/10"
-              : "border-zinc-200/60 bg-white/75 text-zinc-900 shadow-sm backdrop-blur-lg dark:border-zinc-700/60 dark:bg-zinc-950/75 dark:text-zinc-100"
-          )}
-        >
-          <BorderBeam duration={7} size={100} colorFrom="#1005e2" colorTo="#df0e1c " />
-
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 md:px-8">
           {/* Brand Logo */}
           <Link
-  href="/"
-  className="group flex items-center gap-2 text-sm font-semibold tracking-tight text-zinc-950 transition hover:opacity-90 dark:text-zinc-100"
->
-  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-950 dark:bg-white">
-    <Image
-      src="/nep.webp"
-      alt="Our Nepal logo"
-      width={16}
-      height={16}
-      className="h-4 w-4"
-    />
-  </div>
-  <span className="font-bold tracking-tight text-zinc-950 dark:text-zinc-100">
-    Our Nepal
-  </span>
-</Link>
-  
+            href="/"
+            className="group flex items-center gap-2.5 text-stone-900 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] focus-visible:ring-offset-2 rounded-lg p-1 dark:text-stone-100"
+          >
+            {/* Mountain Peak Line Logo */}
+            <svg
+              viewBox="0 0 38 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-6 w-9 text-[#C65D3B] transition-transform duration-300 group-hover:scale-105"
+            >
+              <path d="M2 21L12 4L22 21H2Z" />
+              <path d="M12 4L15 11L18 21" strokeWidth="1.5" />
+              <path d="M17 21L25 8L36 21H17Z" />
+              <path d="M25 8L28 13L30 21" strokeWidth="1.5" />
+            </svg>
+            <span className="font-heading text-2xl font-bold tracking-tight text-stone-900 dark:text-stone-100">
+              Our Nepal
+            </span>
+          </Link>
 
           {/* Desktop Navigation Links */}
-          <div className="hidden items-center gap-1 text-sm sm:flex">
+          <nav className="hidden items-center gap-8 lg:gap-10 sm:flex" aria-label="Main Navigation">
             {navLinks.map((link) => {
               const isActive =
                 link.href === "/"
@@ -170,73 +174,56 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    "rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200",
+                    "relative py-1 text-[15px] lg:text-[16px] font-medium transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] rounded-sm",
+                    "after:absolute after:bottom-[-2px] after:left-0 after:h-[2px] after:w-full after:origin-bottom-left after:transition-transform after:duration-200",
                     isActive
-                      ? "bg-zinc-100 text-zinc-950 font-semibold dark:bg-zinc-800 dark:text-white"
-                      : "text-zinc-600 hover:bg-zinc-100/60 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-white"
+                      ? "text-[#C65D3B] font-semibold dark:text-[#E07A5F] after:bg-[#C65D3B] dark:after:bg-[#E07A5F] after:scale-x-100"
+                      : "text-stone-700 hover:text-[#C65D3B] dark:text-stone-300 dark:hover:text-[#E07A5F] after:bg-[#C65D3B] dark:after:bg-[#E07A5F] after:scale-x-0 hover:after:scale-x-100"
                   )}
                 >
                   {link.label}
                 </Link>
               );
             })}
-          </div>
+          </nav>
 
           {/* Desktop Right Action CTAs */}
-          <div className="hidden items-center gap-2 sm:flex">
+          <div className="hidden items-center gap-3.5 sm:flex">
+            {/* Theme Toggle Button - 40x40px with aria-label & tooltip */}
             <button
               type="button"
-              onClick={() => setTheme(theme === "dark" || (theme === "system" && resolvedTheme === "dark") ? "light" : "dark")}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700/80 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
-              aria-label="Toggle dark mode"
+              onClick={() => setTheme(isDarkMode ? "light" : "dark")}
+              aria-label={themeToggleLabel}
+              title={themeToggleLabel}
+              className="inline-flex h-10 w-10 min-w-10 items-center justify-center rounded-full border border-stone-300/80 bg-white/80 text-stone-700 shadow-2xs transition-all hover:border-stone-400 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] focus-visible:ring-offset-2 dark:border-stone-700 dark:bg-stone-900/90 dark:text-stone-200 dark:hover:bg-stone-800"
             >
-              {themeMounted && (theme === "dark" || (theme === "system" && resolvedTheme === "dark")) ? (
-                <Sun className="h-4 w-4" />
+              {isDarkMode ? (
+                <Sun className="h-4.5 w-4.5 transition-transform duration-300 hover:rotate-45" />
               ) : (
-                <Moon className="h-4 w-4" />
+                <Moon className="h-4.5 w-4.5 text-stone-700 transition-transform duration-300 hover:-rotate-12" />
               )}
             </button>
 
-            {!authChecked ? null : isLoggedIn ? (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-white"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                Log out
-              </button>
-            ) : (
-              <>
-                <Link
-                  href="/auth/login"
-                  className="rounded-full px-3.5 py-1.5 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-800 dark:hover:text-white"
-                >
-                  Log in
-                </Link>
-
-                <Link
-                  href="/auth/signup"
-                  className="rounded-full bg-zinc-950 px-4 py-1.5 text-sm font-medium text-white shadow-xs transition duration-200 hover:bg-zinc-800"
-                >
-                  Sign up
-                </Link>
-              </>
-            )}
+            {/* User Profile Pill with merged Dropdown (Profile, My Stories, Logout) */}
+            <UserMenu
+              user={currentUser}
+              displayName={displayName}
+              onLogout={handleLogout}
+            />
           </div>
 
           {/* Mobile Toggle Button */}
           <button
             type="button"
             onClick={openDrawer}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-700 transition hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800 sm:hidden active:scale-95"
-            aria-label="Open menu"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 text-stone-700 transition hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] dark:border-stone-800 dark:text-stone-200 dark:hover:bg-stone-800 sm:hidden active:scale-95"
+            aria-label="Open navigation menu"
             aria-expanded={open}
           >
             <Menu className="h-5 w-5" />
           </button>
         </div>
-      </nav>
+      </header>
 
       {/* Mobile Drawer Overlay & Content */}
       {mounted && (
@@ -254,34 +241,47 @@ export function Navbar() {
             role="dialog"
             aria-modal="true"
             className={cn(
-              "fixed inset-y-0 right-0 z-[100] flex h-full w-[85%] max-w-sm flex-col bg-white/95 shadow-2xl backdrop-blur-2xl transition-transform duration-300 ease-out sm:hidden border-l border-zinc-100 dark:bg-zinc-950/95 dark:border-zinc-700/60",
+              "fixed inset-y-0 right-0 z-[100] flex h-full w-[85%] max-w-sm flex-col bg-[#FAF7F2] shadow-2xl backdrop-blur-2xl transition-transform duration-300 ease-out sm:hidden border-l border-stone-200 dark:bg-stone-950 dark:border-stone-800",
               visible ? "translate-x-0" : "translate-x-full"
             )}
           >
             {/* Header inside Mobile Drawer */}
-            <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-5">
+            <div className="flex items-center justify-between border-b border-stone-200/80 px-6 py-5 dark:border-stone-800">
               <Link
                 href="/"
                 onClick={closeDrawer}
-                className="flex items-center gap-2 text-sm font-semibold text-zinc-950 dark:text-zinc-100"
+                className="flex items-center gap-2.5 text-sm font-semibold text-stone-900 dark:text-stone-100"
               >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-950 text-white dark:bg-white dark:text-zinc-950">
-                  <Handshake className="h-4 w-4" />
-                </div>
-                <span className="font-bold tracking-tight text-zinc-950 dark:text-zinc-100">Blogs</span>
+                <svg
+                  viewBox="0 0 38 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-5 w-7 text-[#C65D3B]"
+                >
+                  <path d="M2 21L12 4L22 21H2Z" />
+                  <path d="M12 4L15 11L18 21" strokeWidth="1.5" />
+                  <path d="M17 21L25 8L36 21H17Z" />
+                  <path d="M25 8L28 13L30 21" strokeWidth="1.5" />
+                </svg>
+                <span className="font-heading text-lg font-bold tracking-tight text-stone-900 dark:text-stone-100">
+                  Our Nepal
+                </span>
               </Link>
               <button
                 type="button"
                 onClick={closeDrawer}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                aria-label="Close menu"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-stone-500 hover:bg-stone-200/70 hover:text-stone-900 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+                aria-label="Close navigation menu"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Mobile Nav Links */}
-            <div className="flex flex-col gap-1 overflow-y-auto px-6 py-4">
+            <div className="flex flex-col gap-1.5 overflow-y-auto px-6 py-5">
               {navLinks.map((link) => {
                 const isActive =
                   link.href === "/"
@@ -294,58 +294,73 @@ export function Navbar() {
                     href={link.href}
                     onClick={closeDrawer}
                     className={cn(
-                      "flex items-center justify-between rounded-xl px-3 py-3 text-lg font-medium transition-colors",
+                      "flex items-center justify-between rounded-xl px-3.5 py-3 text-[16px] font-medium transition-colors",
                       isActive
-                        ? "bg-zinc-100 font-semibold text-zinc-950 dark:bg-zinc-800 dark:text-zinc-100"
-                        : "text-zinc-700 hover:bg-zinc-50 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-100"
+                        ? "bg-stone-200/70 font-semibold text-[#C65D3B] dark:bg-stone-800 dark:text-[#E07A5F]"
+                        : "text-stone-700 hover:bg-stone-100 hover:text-stone-950 dark:text-stone-300 dark:hover:bg-stone-800/70 dark:hover:text-stone-100"
                     )}
                   >
                     <span>{link.label}</span>
                     {isActive && (
-                      <span className="h-2 w-2 rounded-full bg-zinc-900 dark:bg-zinc-100" />
+                      <span className="h-2 w-2 rounded-full bg-[#C65D3B] dark:bg-[#E07A5F]" />
                     )}
                   </Link>
                 );
               })}
             </div>
 
-            {/* Bottom Actions inside Drawer */}
-            <div className="mt-auto flex flex-col gap-2.5 border-t border-zinc-100 bg-zinc-50/50 p-6 dark:border-zinc-700/60 dark:bg-zinc-950/80">
+            {/* Mobile User Details & Theme Toggle */}
+            <div className="mt-auto flex flex-col gap-3 border-t border-stone-200/80 bg-stone-100/50 p-6 dark:border-stone-800 dark:bg-stone-900/80">
+              {/* User Shortcuts in Mobile Drawer */}
+              <div className="rounded-xl border border-stone-200 bg-white p-3 dark:border-stone-800 dark:bg-stone-950/80">
+                <div className="flex items-center gap-2.5 mb-2 pb-2 border-b border-stone-100 dark:border-stone-800">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#C65D3B]/10 text-[#C65D3B]">
+                    <UserIcon className="h-4 w-4" />
+                  </div>
+                  <div className="truncate">
+                    <p className="text-[13px] font-semibold text-stone-900 dark:text-stone-100">{displayName}</p>
+                    <p className="text-[12px] text-stone-500 truncate">{currentUser?.email || "nepal@ournepal.com"}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-[13px]">
+                  <Link
+                    href={currentUser?.role === "admin" ? "/admin" : "/blog"}
+                    onClick={closeDrawer}
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900"
+                  >
+                    <UserIcon className="h-3.5 w-3.5 text-stone-500" />
+                    <span>Profile</span>
+                  </Link>
+                  <Link
+                    href={currentUser?.role === "admin" ? "/admin/posts" : "/blog"}
+                    onClick={closeDrawer}
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-900"
+                  >
+                    <BookOpen className="h-3.5 w-3.5 text-stone-500" />
+                    <span>My Stories</span>
+                  </Link>
+                </div>
+              </div>
+
+              {/* Theme Toggle Button */}
               <button
                 type="button"
-                onClick={() => setTheme(theme === "dark" || (theme === "system" && resolvedTheme === "dark") ? "light" : "dark")}
-                className="w-full rounded-full border border-zinc-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-zinc-800 shadow-2xs transition hover:bg-zinc-50 dark:border-zinc-700/70 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
+                onClick={() => setTheme(isDarkMode ? "light" : "dark")}
+                className="flex items-center justify-center gap-2 w-full rounded-full border border-stone-300 bg-white px-4 py-2.5 text-center text-[14px] font-medium text-stone-800 shadow-2xs transition hover:bg-stone-50 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-100 dark:hover:bg-stone-800"
               >
-                {themeMounted && (theme === "dark" || (theme === "system" && resolvedTheme === "dark")) ? "Switch to Light" : "Switch to Dark"}
+                {isDarkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                <span>{isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}</span>
               </button>
 
-              {!authChecked ? null : isLoggedIn ? (
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-full bg-zinc-950 px-4 py-2.5 text-center text-sm font-medium text-white shadow-xs transition hover:bg-zinc-800"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Log out
-                </button>
-              ) : (
-                <>
-                  <Link
-                    href="/auth/login"
-                    onClick={closeDrawer}
-                    className="w-full rounded-full border border-zinc-200 bg-white px-4 py-2.5 text-center text-sm font-medium text-zinc-800 shadow-2xs transition hover:bg-zinc-50 dark:border-zinc-700/70 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800"
-                  >
-                    Log in
-                  </Link>
-                  <Link
-                    href="/auth/signup"
-                    onClick={closeDrawer}
-                    className="w-full rounded-full bg-zinc-950 px-4 py-2.5 text-center text-sm font-medium text-white shadow-xs transition hover:bg-zinc-800"
-                  >
-                    Sign up
-                  </Link>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="flex w-full items-center justify-center gap-2 rounded-full border border-red-200 bg-red-50/50 px-4 py-2.5 text-center text-[14px] font-medium text-red-700 transition hover:bg-red-100 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Logout</span>
+              </button>
             </div>
           </div>
         </>
