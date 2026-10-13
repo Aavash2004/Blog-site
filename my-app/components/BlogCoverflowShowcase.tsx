@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ArrowRight, MapPin } from "lucide-react";
@@ -21,7 +21,7 @@ const destinations: ShowcaseDestination[] = [
     id: "annapurna",
     slug: "annapurna-sanctuary-fishtail",
     destination: "ANNAPURNA",
-    title: "Sanctuary of Gods & Fishtail Peak",
+    title: "Sanctuary of the Gods & Fishtail Peak",
     region: "Gandaki Province",
     category: "Trekking",
     excerpt: "Traversing morning mist and rhododendron ridges toward the amphitheater of 8,000m giants.",
@@ -31,7 +31,7 @@ const destinations: ShowcaseDestination[] = [
     id: "mustang",
     slug: "secret-monasteries-upper-mustang",
     destination: "MUSTANG",
-    title: "The Walled Kingdom of Ancient Caves",
+    title: "The Walled Kingdom of Sky Caves",
     region: "Trans-Himalayan Plateau",
     category: "Heritage",
     excerpt: "Wind-carved red sandstone cliffs, ancient mud-brick fortresses, and sacred Buddhist sky caves.",
@@ -71,6 +71,9 @@ const destinations: ShowcaseDestination[] = [
 
 export function BlogCoverflowShowcase() {
   const [activeIndex, setActiveIndex] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
 
   const total = destinations.length;
 
@@ -82,7 +85,21 @@ export function BlogCoverflowShowcase() {
     setActiveIndex((prev) => (prev - 1 + total) % total);
   }, [total]);
 
-  // Keyboard arrow navigation
+  // Autoplay (~6s), paused on hover/focus and disabled when prefers-reduced-motion is active
+  useEffect(() => {
+    if (isPaused) return;
+
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    if (mediaQuery.matches) return;
+
+    const timer = setInterval(() => {
+      nextSlide();
+    }, 6000);
+
+    return () => clearInterval(timer);
+  }, [isPaused, nextSlide]);
+
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "ArrowLeft") prevSlide();
@@ -92,51 +109,96 @@ export function BlogCoverflowShowcase() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [nextSlide, prevSlide]);
 
+  // Touch Swipe Handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current !== null && touchEndX.current !== null) {
+      const distance = touchStartX.current - touchEndX.current;
+      if (distance > 50) nextSlide();
+      if (distance < -50) prevSlide();
+    }
+    touchStartX.current = null;
+    touchEndX.current = null;
+  };
+
   const activeDestination = destinations[activeIndex];
 
   return (
-    <section className="relative w-full overflow-hidden bg-[#0A0D12] text-white py-10 md:py-16 border-b border-stone-800/80">
-      {/* Dynamic Ambient Background Blur mirroring current active image */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-35 dark:opacity-25 transition-all duration-700">
-        <Image
-          src={activeDestination.image}
-          alt=""
-          fill
-          className="object-cover blur-3xl scale-125 saturate-150"
-          sizes="100vw"
-        />
-        <div className="absolute inset-0 bg-radial from-transparent via-[#0A0D12]/75 to-[#0A0D12]" />
+    <section
+      aria-label="Featured Himalayan Destinations Carousel"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onFocus={() => setIsPaused(true)}
+      onBlur={() => setIsPaused(false)}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="relative w-full overflow-hidden bg-[#0A0D12] text-white py-12 md:py-16 lg:py-20 border-b border-stone-800/90 select-none"
+    >
+      {/* Screen reader live announcement */}
+      <div className="sr-only" aria-live="polite">
+        Slide {activeIndex + 1} of {total}: {activeDestination.title} in {activeDestination.region}
       </div>
 
-      {/* 3D Coverflow Viewport */}
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 h-[480px] sm:h-[540px] md:h-[600px] flex items-center justify-center">
-        {/* Previous Arrow Button */}
+      {/* Dynamic Ambient Cross-Fade Backgrounds */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {destinations.map((dest, idx) => (
+          <div
+            key={dest.id}
+            className={`absolute inset-0 transition-opacity duration-700 ease-in-out ${
+              activeIndex === idx ? "opacity-35" : "opacity-0"
+            }`}
+          >
+            <Image
+              src={dest.image}
+              alt=""
+              fill
+              className="object-cover blur-3xl scale-125 saturate-150 brightness-75"
+              sizes="100vw"
+            />
+          </div>
+        ))}
+        {/* Layered vignette and tone tints */}
+        <div className="absolute inset-0 bg-radial from-transparent via-[#0A0D12]/60 to-[#0A0D12]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0A0D12] via-transparent to-[#0A0D12]/70" />
+      </div>
+
+      {/* 3D Coverflow Viewport (Increased height: 460px - 580px) */}
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 h-[460px] sm:h-[520px] md:h-[560px] lg:h-[600px] flex items-center justify-center">
+        {/* 48px Previous Arrow Button placed outside cards */}
         <button
           type="button"
           onClick={prevSlide}
-          aria-label="Previous destination"
-          className="absolute left-3 sm:left-6 md:left-10 z-40 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white backdrop-blur-md transition-all duration-200 hover:scale-110 hover:border-white/50 hover:bg-[#C65D3B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B]"
+          aria-label="Previous destination story"
+          className="absolute left-2 sm:left-4 md:left-8 lg:left-12 z-40 flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-white/25 bg-black/60 text-white backdrop-blur-md shadow-lg transition-all duration-200 hover:scale-110 hover:border-[#C65D3B] hover:bg-[#C65D3B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] focus-visible:ring-offset-2"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
 
-        {/* Next Arrow Button */}
+        {/* 48px Next Arrow Button placed outside cards */}
         <button
           type="button"
           onClick={nextSlide}
-          aria-label="Next destination"
-          className="absolute right-3 sm:right-6 md:right-10 z-40 flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full border border-white/20 bg-black/50 text-white backdrop-blur-md transition-all duration-200 hover:scale-110 hover:border-white/50 hover:bg-[#C65D3B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B]"
+          aria-label="Next destination story"
+          className="absolute right-2 sm:right-4 md:right-8 lg:right-12 z-40 flex h-12 w-12 min-h-[48px] min-w-[48px] items-center justify-center rounded-full border border-white/25 bg-black/60 text-white backdrop-blur-md shadow-lg transition-all duration-200 hover:scale-110 hover:border-[#C65D3B] hover:bg-[#C65D3B] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] focus-visible:ring-offset-2"
         >
           <ChevronRight className="h-6 w-6" />
         </button>
 
-        {/* 3D Cards Perspective Container */}
+        {/* 3D Cards Perspective Stage */}
         <div
           className="relative w-full h-full flex items-center justify-center"
-          style={{ perspective: "1200px" }}
+          style={{ perspective: "1300px" }}
         >
           {destinations.map((item, index) => {
-            // Calculate signed distance with wrap-around
+            // Signed distance relative to active slide
             let diff = index - activeIndex;
             if (diff > total / 2) diff -= total;
             if (diff < -total / 2) diff += total;
@@ -147,11 +209,10 @@ export function BlogCoverflowShowcase() {
             const isFarLeft = diff === -2;
             const isFarRight = diff === 2;
 
-            // Only show items within distance <= 2
             const isVisible = Math.abs(diff) <= 2;
             if (!isVisible) return null;
 
-            // Compute 3D translation & rotation values
+            // Compute exact 3D positioning
             let translateX = "0px";
             let translateZ = "0px";
             let rotateY = "0deg";
@@ -161,38 +222,38 @@ export function BlogCoverflowShowcase() {
 
             if (isCenter) {
               translateX = "0px";
-              translateZ = "120px";
+              translateZ = "140px";
               rotateY = "0deg";
-              scale = 1.05;
+              scale = 1.08;
               opacity = 1;
               zIndex = 35;
             } else if (isLeft) {
-              translateX = "calc(-52% - 100px)";
-              translateZ = "20px";
-              rotateY = "26deg";
-              scale = 0.9;
-              opacity = 0.85;
+              translateX = "calc(-56% - 110px)";
+              translateZ = "10px";
+              rotateY = "24deg";
+              scale = 0.88;
+              opacity = 0.68;
               zIndex = 25;
             } else if (isRight) {
-              translateX = "calc(52% + 100px)";
-              translateZ = "20px";
-              rotateY = "-26deg";
-              scale = 0.9;
-              opacity = 0.85;
+              translateX = "calc(56% + 110px)";
+              translateZ = "10px";
+              rotateY = "-24deg";
+              scale = 0.88;
+              opacity = 0.68;
               zIndex = 25;
             } else if (isFarLeft) {
-              translateX = "calc(-104% - 160px)";
+              translateX = "calc(-110% - 170px)";
               translateZ = "-90px";
-              rotateY = "38deg";
-              scale = 0.76;
-              opacity = 0.5;
+              rotateY = "34deg";
+              scale = 0.74;
+              opacity = 0.45;
               zIndex = 15;
             } else if (isFarRight) {
-              translateX = "calc(104% + 160px)";
+              translateX = "calc(110% + 170px)";
               translateZ = "-90px";
-              rotateY = "-38deg";
-              scale = 0.76;
-              opacity = 0.5;
+              rotateY = "-34deg";
+              scale = 0.74;
+              opacity = 0.45;
               zIndex = 15;
             }
 
@@ -202,8 +263,8 @@ export function BlogCoverflowShowcase() {
                 onClick={() => {
                   if (!isCenter) setActiveIndex(index);
                 }}
-                className={`absolute cursor-pointer transition-all duration-500 ease-out select-none will-change-transform ${
-                  isCenter ? "cursor-default" : "hover:brightness-110"
+                className={`absolute transition-all duration-500 ease-out will-change-transform ${
+                  isCenter ? "cursor-default" : "cursor-pointer hover:opacity-85"
                 }`}
                 style={{
                   transform: `translateX(${translateX}) translateZ(${translateZ}) rotateY(${rotateY}) scale(${scale})`,
@@ -212,12 +273,12 @@ export function BlogCoverflowShowcase() {
                   transformStyle: "preserve-3d",
                 }}
               >
-                {/* Individual Card */}
+                {/* Individual Card Container */}
                 <div
-                  className={`relative w-[210px] sm:w-[260px] md:w-[290px] lg:w-[320px] aspect-[9/13.5] rounded-2xl sm:rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 ${
+                  className={`relative overflow-hidden rounded-2xl sm:rounded-3xl shadow-2xl transition-all duration-300 ${
                     isCenter
-                      ? "ring-2 ring-[#C65D3B]/90 shadow-[0_20px_50px_rgba(0,0,0,0.8),0_0_40px_rgba(198,93,59,0.3)]"
-                      : "ring-1 ring-white/10 shadow-[0_15px_35px_rgba(0,0,0,0.6)]"
+                      ? "w-[270px] sm:w-[330px] md:w-[380px] lg:w-[410px] aspect-[9/13.5] ring-2 ring-[#C65D3B] shadow-[0_25px_60px_rgba(0,0,0,0.9),0_0_50px_rgba(198,93,59,0.35)]"
+                      : "w-[220px] sm:w-[270px] md:w-[300px] lg:w-[330px] aspect-[9/13.5] ring-1 ring-white/15 shadow-[0_15px_35px_rgba(0,0,0,0.7)]"
                   }`}
                 >
                   <Image
@@ -225,48 +286,63 @@ export function BlogCoverflowShowcase() {
                     alt={item.title}
                     fill
                     className="object-cover object-center"
-                    sizes="(max-width: 640px) 240px, (max-width: 768px) 280px, 340px"
+                    sizes="(max-width: 640px) 270px, (max-width: 768px) 330px, 410px"
                     priority={isCenter}
                   />
 
                   {/* Gradient Lighting Overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/45 to-transparent" />
                   {!isCenter && (
-                    <div className="absolute inset-0 bg-black/35 backdrop-brightness-95 transition-opacity" />
+                    <div className="absolute inset-0 bg-black/25 backdrop-brightness-95" />
                   )}
 
-                  {/* Category Pill Tag on top */}
+                  {/* Category Pill Tag */}
                   <div className="absolute top-4 left-4 z-10">
-                    <span className="inline-block rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-[11px] font-semibold tracking-[0.1em] text-white/90 uppercase border border-white/15">
+                    <span className="inline-block rounded-full bg-black/65 backdrop-blur-md px-3.5 py-1 text-[13px] font-semibold tracking-[0.08em] text-white uppercase border border-white/20 shadow-xs">
                       {item.category}
                     </span>
                   </div>
 
-                  {/* Card Bottom Meta */}
-                  <div className="absolute inset-x-0 bottom-0 p-5 sm:p-6 text-white space-y-1.5">
-                    {/* Destination Monogram Watermark */}
-                    <p className="font-heading tracking-[0.25em] text-xs font-semibold text-[#E07A5F] uppercase">
+                  {/* Card Content at Bottom */}
+                  <div className="absolute inset-x-0 bottom-0 p-5 sm:p-7 text-white space-y-2">
+                    {/* Destination Eyebrow */}
+                    <p className="font-heading tracking-[0.22em] text-xs font-semibold text-[#E07A5F] uppercase">
                       {item.destination}
                     </p>
 
-                    <h3 className="font-heading text-lg sm:text-xl font-bold leading-snug line-clamp-2 drop-shadow-md">
+                    {/* Title: 1.75 - 2.25rem on Center Card */}
+                    <h3
+                      className={`font-heading font-bold leading-tight drop-shadow-md ${
+                        isCenter
+                          ? "text-2xl sm:text-[28px] lg:text-[32px] line-clamp-2"
+                          : "text-lg sm:text-xl line-clamp-2"
+                      }`}
+                    >
                       {item.title}
                     </h3>
 
-                    <div className="flex items-center gap-1.5 text-xs text-white/70 pt-0.5">
-                      <MapPin className="h-3 w-3 text-[#E07A5F]" />
+                    {/* Excerpt on Center Card */}
+                    {isCenter && (
+                      <p className="line-clamp-2 text-[14px] sm:text-[15px] leading-relaxed text-white/90 font-light pt-0.5">
+                        {item.excerpt}
+                      </p>
+                    )}
+
+                    {/* Location Region */}
+                    <div className="flex items-center gap-1.5 text-xs sm:text-[13px] text-white/75 font-medium pt-0.5">
+                      <MapPin className="h-3.5 w-3.5 text-[#E07A5F]" />
                       <span>{item.region}</span>
                     </div>
 
-                    {/* CTA Link when active */}
+                    {/* Large "Read Full Story" Button (min-h 48px) on Active Card */}
                     {isCenter && (
                       <div className="pt-3">
                         <Link
                           href={`/blog/${item.slug}`}
-                          className="inline-flex items-center gap-2 rounded-full bg-[#C65D3B] hover:bg-[#B24F30] px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:gap-2.5"
+                          className="group/btn inline-flex h-12 min-h-[48px] items-center gap-2.5 rounded-full bg-[#C65D3B] px-7 text-[15px] font-semibold text-white shadow-md transition-all duration-200 hover:bg-[#B24F30] hover:shadow-xl hover:gap-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2"
                         >
                           <span>Read Full Story</span>
-                          <ArrowRight className="h-3 w-3" />
+                          <ArrowRight className="h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
                         </Link>
                       </div>
                     )}
@@ -278,27 +354,31 @@ export function BlogCoverflowShowcase() {
         </div>
       </div>
 
-      {/* Bottom Showcase Control Bar */}
-      <div className="relative mx-auto max-w-xl px-4 text-center mt-4">
-        {/* Indicator dots */}
+      {/* Pagination Dots with Larger Tap Targets (min 24px) */}
+      <div className="relative mx-auto max-w-xl px-4 text-center mt-6">
         <div className="flex items-center justify-center gap-2">
           {destinations.map((dest, idx) => (
             <button
               key={dest.id}
               type="button"
               onClick={() => setActiveIndex(idx)}
-              aria-label={`Go to ${dest.title}`}
-              className={`h-2 transition-all duration-300 rounded-full ${
-                activeIndex === idx
-                  ? "w-8 bg-[#C65D3B]"
-                  : "w-2 bg-white/30 hover:bg-white/60"
-              }`}
-            />
+              aria-label={`Go to slide ${idx + 1}: ${dest.title}`}
+              className="group flex h-6 w-6 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C65D3B] rounded-full"
+            >
+              <span
+                className={`transition-all duration-300 rounded-full ${
+                  activeIndex === idx
+                    ? "w-8 h-2.5 bg-[#C65D3B]"
+                    : "w-2.5 h-2.5 bg-white/40 group-hover:bg-white/70"
+                }`}
+              />
+            </button>
           ))}
         </div>
 
-        <p className="text-xs text-white/50 tracking-wider mt-3">
-          Use arrow keys <span className="text-white/80 font-mono">← →</span> or drag to explore Nepal&apos;s iconic regions
+        {/* High-Contrast Helper Text (hidden on touch devices) */}
+        <p className="hidden md:block text-[13px] text-white/75 font-medium tracking-wide mt-3">
+          Use keyboard arrows <span className="text-white font-mono px-1">← →</span> or drag to explore Nepal&apos;s regions
         </p>
       </div>
     </section>
