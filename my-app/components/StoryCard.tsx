@@ -93,7 +93,7 @@ export function StoryCard({ story, isFeatured = false }: StoryCardProps) {
                   className="h-8 w-8 rounded-full object-cover ring-1 ring-stone-200 dark:ring-stone-700"
                 />
               ) : (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#C65D3B]/10 text-xs font-semibold text-[#C65D3B] dark:bg-[#C65D3B]/20 dark:text-[#E07A5F]">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#C65D3B]/10 text-[13px] font-semibold text-[#C65D3B] dark:bg-[#C65D3B]/20 dark:text-[#E07A5F]">
                   {story.author.name.charAt(0)}
                 </div>
               )}
@@ -170,7 +170,7 @@ export function StoryCard({ story, isFeatured = false }: StoryCardProps) {
                 className="h-7 w-7 rounded-full object-cover ring-1 ring-stone-200 dark:ring-stone-700"
               />
             ) : (
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#C65D3B]/10 text-xs font-semibold text-[#C65D3B] dark:bg-[#C65D3B]/20 dark:text-[#E07A5F]">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#C65D3B]/10 text-[13px] font-semibold text-[#C65D3B] dark:bg-[#C65D3B]/20 dark:text-[#E07A5F]">
                 {story.author.name.charAt(0)}
               </div>
             )}

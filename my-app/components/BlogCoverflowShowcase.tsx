@@ -306,7 +306,7 @@ export function BlogCoverflowShowcase() {
                   {/* Card Content at Bottom */}
                   <div className="absolute inset-x-0 bottom-0 p-5 sm:p-7 text-white space-y-2">
                     {/* Destination Eyebrow */}
-                    <p className="font-heading tracking-[0.22em] text-xs font-semibold text-[#E07A5F] uppercase">
+                    <p className="font-heading tracking-[0.22em] text-[13px] font-semibold text-[#E07A5F] uppercase">
                       {item.destination}
                     </p>
 
@@ -329,7 +329,7 @@ export function BlogCoverflowShowcase() {
                     )}
 
                     {/* Location Region */}
-                    <div className="flex items-center gap-1.5 text-xs sm:text-[13px] text-white/75 font-medium pt-0.5">
+                    <div className="flex items-center gap-1.5 text-[13px] text-white/75 font-medium pt-0.5">
                       <MapPin className="h-3.5 w-3.5 text-[#E07A5F]" />
                       <span>{item.region}</span>
                     </div>

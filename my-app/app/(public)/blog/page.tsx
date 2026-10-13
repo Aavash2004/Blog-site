@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Search,
   X,
@@ -187,8 +187,52 @@ export default function BlogIndexPage() {
   }, []);
 
   useEffect(() => {
-    fetchStories();
-  }, [fetchStories]);
+    let ignore = false;
+    async function initFetch() {
+      try {
+        const res = await fetch("/api/posts");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!ignore && data && Array.isArray(data.posts) && data.posts.length > 0) {
+          interface DbPost {
+            id: number;
+            slug: string;
+            title: string;
+            excerpt?: string;
+            category?: string;
+            featured_image?: string;
+            author_name?: string;
+            created_at: string;
+          }
+          const mapped: Story[] = data.posts.map((p: DbPost, idx: number) => ({
+            id: p.id,
+            slug: p.slug,
+            title: p.title,
+            excerpt: p.excerpt || "Explore perspectives and stories from Nepal.",
+            category: p.category || "Stories",
+            featuredImage: p.featured_image || "/images/annapurna-sanctuary.jpg",
+            author: {
+              name: p.author_name || "Editorial Writer",
+            },
+            date: new Date(p.created_at).toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric",
+            }),
+            readTime: "5 min read",
+            featured: idx === 0,
+          }));
+          setStories(mapped);
+        }
+      } catch {
+        // keep initialStories
+      }
+    }
+    initFetch();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   // Compute category counts
   const categoryCounts = useMemo(() => {
@@ -306,7 +350,7 @@ export default function BlogIndexPage() {
                   <X className="h-3.5 w-3.5" />
                 </button>
               ) : (
-                <kbd className="hidden sm:inline-flex h-5 items-center rounded border border-stone-200 bg-stone-50 px-1.5 text-[11px] font-mono text-stone-400 dark:border-stone-800 dark:bg-stone-800 dark:text-stone-400">
+                <kbd className="hidden sm:inline-flex h-5 items-center rounded border border-stone-200 bg-stone-50 px-1.5 text-[13px] font-mono text-stone-400 dark:border-stone-800 dark:bg-stone-800 dark:text-stone-400">
                   /
                 </kbd>
               )}
@@ -319,7 +363,7 @@ export default function BlogIndexPage() {
           {/* Horizontally scrollable filter pills with counts */}
           <div className="relative flex-1 overflow-hidden">
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-              <span className="hidden lg:flex items-center gap-1.5 text-xs font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider pr-1">
+              <span className="hidden lg:flex items-center gap-1.5 text-[13px] font-semibold text-stone-500 dark:text-stone-400 uppercase tracking-wider pr-1">
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 <span>Filter:</span>
               </span>
@@ -343,7 +387,7 @@ export default function BlogIndexPage() {
                   >
                     <span>{cat}</span>
                     <span
-                      className={`text-xs rounded-full px-1.5 py-0.2 ${
+                      className={`text-[13px] rounded-full px-2 py-0.5 ${
                         isActive
                           ? "bg-white/20 text-white"
                           : "bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400"
