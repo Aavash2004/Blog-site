@@ -300,7 +300,7 @@ export default function BlogIndexPage() {
       {/* ======================================================== */}
       {/* 2. CATALOG HEADER, SEARCH, & FILTERS                     */}
       {/* ======================================================== */}
-      <div id="stories-grid" className="mx-auto max-w-7xl px-5 py-16 md:px-8 md:py-24 space-y-12">
+      <div id="stories-grid" className="mx-auto max-w-7xl px-5 pt-8 pb-16 md:pt-10 md:pb-24 space-y-8 md:space-y-10">
         {/* Section Header */}
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between border-b border-stone-200/80 pb-8 dark:border-stone-800">
           <div className="space-y-2">

@@ -1,25 +1,11 @@
 import type { Metadata } from "next";
-import { Fraunces, Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
+import { Urbanist } from "next/font/google";
 import CursorEffect from "./cursor";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
-const fraunces = Fraunces({
-  variable: "--font-heading",
-  subsets: ["latin"],
-  display: "swap",
-  axes: ["opsz"],
-});
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  display: "swap",
-});
-
-const jetBrainsMono = JetBrains_Mono({
-  variable: "--font-mono",
+const urbanist = Urbanist({
+  variable: "--font-urbanist",
   subsets: ["latin"],
   display: "swap",
 });
@@ -41,7 +27,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${plusJakartaSans.variable} ${fraunces.variable} ${jetBrainsMono.variable} h-full antialiased`}
+      className={`${urbanist.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground selection:bg-zinc-900 selection:text-white">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>

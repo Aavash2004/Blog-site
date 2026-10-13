@@ -8,10 +8,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-body), sans-serif;
-  --font-body: var(--font-body), sans-serif;
-  --font-heading: var(--font-heading), serif;
-  --font-serif: var(--font-heading), serif;
+  --font-sans: var(--font-urbanist), sans-serif;
+  --font-body: var(--font-urbanist), sans-serif;
+  --font-heading: var(--font-urbanist), sans-serif;
+  --font-serif: var(--font-urbanist), sans-serif;
   --font-mono: var(--font-mono), monospace;
   --color-terracotta: #C65D3B;
   --color-terracotta-hover: #B24F30;
@@ -58,13 +58,13 @@ body {
   cursor: default;
   overflow-x: hidden;
   position: relative;
-  font-family: var(--font-body), sans-serif;
+  font-family: var(--font-urbanist), sans-serif;
   font-size: 1rem;
   line-height: 1.6;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading), serif;
+  font-family: var(--font-urbanist), sans-serif;
 }
 
 :focus-visible {
@@ -101,7 +101,16 @@ body > * {
   z-index: 1;
 }
 
+@media (max-height: 759px) {
+  .carousel-excerpt-auto-hide {
+    display: none !important;
+  }
+}
+
 :root {
+  --header-height: 68px;
+  --font-body: var(--font-urbanist);
+  --font-heading: var(--font-urbanist);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
